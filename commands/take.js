@@ -19,8 +19,8 @@ module.exports = {
           forwardingScore: 999,
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
-            newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterJid: "120363419670264413@newsletter",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
@@ -30,7 +30,7 @@ module.exports = {
     try {
       // Use default names if no custom name provided
       const packName = "";
-      const authorName = q ? q.trim() : "QADEER-XD - MINI";
+      const authorName = q ? q.trim() : "SURYA-X - MINI";
 
       // Determine target message that contains media
       const quotedMsg = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
