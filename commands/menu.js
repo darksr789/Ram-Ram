@@ -11,11 +11,11 @@ module.exports = {
         try {
             const prefix = userPrefix || ".";
             const NEWSLETTER_JID = "120363425629935700@newsletter";
-            const NEWSLETTER_NAME = "𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 💀";
+            const NEWSLETTER_NAME = "ֆʊʀʏǟӼ💀";
             const menuImage = 'https://up6.cc/2026/04/177631893622821.jpg';
 
-            const botName = "𓆩 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 𝙈𝘿💀𓆪";
-            const ownerName = "ᘔᗩᗰᗩᑎ ᙭ Tᗩᒪᕼᗩ";
+            const botName = "𓆩 SURYA X💀𓆪";
+            const ownerName = "DARK SURYA";
             const version = "2.0";
             const platform = "𝙏𝙚𝙡𝙚𝙜𝙧𝙖𝙢";
 
@@ -575,7 +575,7 @@ module.exports = {
 ╰━━━━━━━━━━━━━━━━━━━━━┈⊷
 
 ╭━━━━━━━━━━━━━━━━━━━━━┈⊷
-┃ ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𓆩 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 💀 𓆪
+┃ ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𓆩 ꜱᴜʀʏᴀ x 💀 𓆪
 ╰━━━━━━━━━━━━━━━━━━━━━┈⊷`;
 
             // Send with newsletter style (exactly like bugmenu)
