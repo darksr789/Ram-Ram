@@ -25,7 +25,7 @@ module.exports = {
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
               newsletterJid: "120363418906972955@newsletter",
-              newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+              newsletterName: "ֆʊʀʏǟӼ",
               serverMessageId: 200,
             },
           },
@@ -142,7 +142,7 @@ module.exports = {
         `*${mediaType.toUpperCase()} Uploaded Successfully*\n\n` +
           `*Size:* ${formatBytes(buffer.length)}\n` +
           `*URL:* ${uploadedUrl}\n\n` +
-          `> © Uploaded by *QADEER-XD - MINI* 💜`
+          `> © Uploaded by *ꜱᴜʀʏᴀ-x - MINI* 💜`
       );
     } catch (err) {
       console.error("URL execution error:", err);
