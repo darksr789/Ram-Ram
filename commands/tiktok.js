@@ -18,7 +18,7 @@ module.exports = {
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
             newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
@@ -53,7 +53,7 @@ module.exports = {
         `👤 *User:* ${author.nickname} (@${author.username})\n` +
         `📖 *Title:* ${title}\n` +
         `👍 *Likes:* ${like}\n💬 *Comments:* ${comment}\n🔁 *Shares:* ${share}\n\n` +
-        `> _ᴘᴏᴡᴇʀᴇᴅ ʙʏ ϙᴀᴅᴇᴇʀ-xᴅ - ᴍɪɴɪ_ `;
+        `> _ᴘᴏᴡᴇʀᴇᴅ ʙʏ ꜱᴜʀʏᴀ-x - ᴍɪɴɪ_ `;
 
       await conn.sendMessage(from, {
         video: { url: videoUrl },
@@ -63,7 +63,7 @@ module.exports = {
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
             newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
