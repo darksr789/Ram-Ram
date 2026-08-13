@@ -95,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showStatus(`
         <div style="text-align: center; color: var(--warning);">
           <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 10px;"></i>
-          <p>Please follow all our channels first to use The TechX.</p>
+          <p>Please follow all our channels first to use SURYA X.</p>
           <button class="btn" style="margin-top: 10px;" onclick="document.getElementById('channelModal').classList.add('active')">
             <i class="fas fa-bell"></i> Show Channels
           </button>
