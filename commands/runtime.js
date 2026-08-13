@@ -101,7 +101,7 @@ function getRuntimeCommand() {
           }, { quoted: message });
         } else {
      texts for error message too
-          await conn.sendMessage(from, {
+          await conn.sendMessage(from {
             text: "⚠️ Failed to fetch runtime info.",
             contextInfo: {
               forwardingScore: 999,
