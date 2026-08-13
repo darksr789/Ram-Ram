@@ -11,21 +11,21 @@ module.exports = {
             // Contact 1
             const vcard1 = 'BEGIN:VCARD\n' +
                           'VERSION:3.0\n' +
-                          'FN:𝗦 𝗜 𝗟 𝗩 𝗘 𝗥\n' +
-                          'TEL;type=CELL;type=VOICE;waid=96899861161:+968 9986 1161\n' +
+                          'FN:D A R K\n' +
+                          'TEL;type=CELL;type=VOICE;waid=917797099719:+917797099719\n' +
                           'END:VCARD';
 
             // Contact 2
             const vcard2 = 'BEGIN:VCARD\n' +
                           'VERSION:3.0\n' +
-                          'FN:𝗭 𝗔 𝗠 𝗔 𝗡\n' +
-                          'TEL;type=CELL;type=VOICE;waid=97466784024:+974 6678 4024\n' +
+                          'FN:S U R Y A\n' +
+                          'TEL;type=CELL;type=VOICE;waid=917797099719:+917797099719\n' +
                           'END:VCARD';
 
             // Send both contacts in ONE message
             await conn.sendMessage(from, {
                 contacts: {
-                    displayName: '𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 💀 Owners',
+                    displayName: 'DARK SURYA 💀 Owners',
                     contacts: [
                         { vcard: vcard1 },
                         { vcard: vcard2 }
