@@ -18,7 +18,7 @@ module.exports = {
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: "120363418906972955@newsletter",
-                        newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                        newsletterName: "ֆʊʀʏǟӼ",
                         serverMessageId: 200
                     }
                 }
@@ -59,7 +59,7 @@ module.exports = {
 ┃ 🆔 *ID*: ${user.id || "N/A"}
 ┃ 🔗 *Profile*: https://www.tiktok.com/@${user.username}
 ╰━━━━━━━━━━━━━━━━━━┈⊷
-> © _ᴘᴏᴡᴇʀᴇᴅ ʙʏ ϙᴀᴅᴇᴇʀ-xᴅ - ᴍɪɴɪ_ `;
+> © _ᴘᴏᴡᴇʀᴇᴅ ʙʏ ꜱᴜʀʏᴀ-x - ᴍɪɴɪ_ `;
 
             if (user.avatar) {
                 await conn.sendMessage(from, {
@@ -70,7 +70,7 @@ module.exports = {
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
                             newsletterJid: "120363418906972955@newsletter",
-                            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                            newsletterName: "ֆʊʀʏǟӼ",
                             serverMessageId: 200
                         }
                     }
