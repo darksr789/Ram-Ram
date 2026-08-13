@@ -46,7 +46,7 @@ function getRuntimeCommand() {
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
                 newsletterJid: "120363418906972955@newsletter",
-                newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 147
               }
             }
@@ -60,14 +60,14 @@ function getRuntimeCommand() {
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
                 newsletterJid: "120363418906972955@newsletter",
-                newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 147
               },
               externalAdReply: {
-                title: "QADEER-XD - MINI RUNTIME",
-                body: "QADEER-XD - MINI runtime information ",
+                title: "SURYA-X - MINI RUNTIME",
+                body: "SURYA-X - MINI runtime information ",
                 thumbnailUrl: "https://files.catbox.moe/6dhr11.jpg",
-                sourceUrl: "https://github.com/QadeerXTech/QADEER-AI",
+                sourceUrl: "https://github.com",
                 mediaType: 1,
                 renderLargerThumbnail: true
               }
@@ -94,13 +94,13 @@ function getRuntimeCommand() {
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
                 newsletterJid: "120363418906972955@newsletter",
-                newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 148
               }
             }
           }, { quoted: message });
         } else {
-          // For regular chats - use both contexts for error message too
+     texts for error message too
           await conn.sendMessage(from, {
             text: "⚠️ Failed to fetch runtime info.",
             contextInfo: {
@@ -108,14 +108,14 @@ function getRuntimeCommand() {
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
                 newsletterJid: "120363418906972955@newsletter",
-                newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 148
               },
               externalAdReply: {
                 title: "❌ Error",
                 body: "Failed to fetch runtime information",
                 thumbnailUrl: "https://files.catbox.moe/6dhr11.jpg",
-                sourceUrl: "https://github.com/QadeerXTech/QADEER-AI",
+                sourceUrl: "https://github.com",
                 mediaType: 1,
                 renderLargerThumbnail: true
               }
