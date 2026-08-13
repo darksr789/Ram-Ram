@@ -12,9 +12,8 @@ const server = http.createServer(app);
 const io = socketIo(server);
 const port = process.env.PORT || 3000;
 
-// ============ FIX 1: সঠিকভাবে ইম্পোর্ট করুন ============
 const GroupEvents = require("./events/GroupEvents");
-const { getRuntimeCommand } = require('./commands/runtime.js'); // ✅ সঠিক
+const runtimeTracker = require('./commands/runtime');
 
 // Middleware
 app.use(express.json());
@@ -43,7 +42,7 @@ function loadPersistentData() {
             console.log(`📊 Loaded persistent data: ${totalUsers} total users`);
         } else {
             console.log("📊 No existing persistent data found, starting fresh");
-            savePersistentData();
+            savePersistentData(); // Create initial file
         }
     } catch (error) {
         console.error("❌ Error loading persistent data:", error);
@@ -91,6 +90,10 @@ io.on("connection", (socket) => {
 // Channel configuration
 const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split(',') : [
     "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+
 ];
 
 // Default prefix for bot commands
@@ -137,21 +140,26 @@ function loadCommands() {
     for (const file of commandFiles) {
         try {
             const filePath = path.join(commandsPath, file);
+            // Clear cache to ensure fresh load
             if (require.cache[require.resolve(filePath)]) {
                 delete require.cache[require.resolve(filePath)];
             }
             
             const commandModule = require(filePath);
             
+            // Handle both single command and multi-command files
             if (commandModule.pattern && commandModule.execute) {
+                // Single command file
                 commands.set(commandModule.pattern, commandModule);
                 console.log(`✅ Loaded command: ${commandModule.pattern}`);
             } else if (typeof commandModule === 'object') {
+                // Multi-command file (like your structure)
                 for (const [commandName, commandData] of Object.entries(commandModule)) {
                     if (commandData.pattern && commandData.execute) {
                         commands.set(commandData.pattern, commandData);
                         console.log(`✅ Loaded command: ${commandData.pattern}`);
                         
+                        // Also add aliases if they exist
                         if (commandData.alias && Array.isArray(commandData.alias)) {
                             commandData.alias.forEach(alias => {
                                 commands.set(alias, commandData);
@@ -168,15 +176,10 @@ function loadCommands() {
         }
     }
 
-    // ============ FIX 2: সঠিকভাবে runtime command যোগ করুন ============
-    try {
-        const runtimeCommand = getRuntimeCommand();
-        if (runtimeCommand && runtimeCommand.pattern && runtimeCommand.execute) {
-            commands.set(runtimeCommand.pattern, runtimeCommand);
-            console.log(`✅ Loaded runtime command: ${runtimeCommand.pattern}`);
-        }
-    } catch (error) {
-        console.error("❌ Error loading runtime command:", error.message);
+    // Add runtime command
+    const runtimeCommand = runtimeTracker.getRuntimeCommand();
+    if (runtimeCommand.pattern && runtimeCommand.execute) {
+        commands.set(runtimeCommand.pattern, runtimeCommand);
     }
 }
 
@@ -208,13 +211,16 @@ app.post("/api/pair", async (req, res) => {
             return res.status(400).json({ error: "Phone number is required" });
         }
 
+        // Normalize phone number
         const normalizedNumber = number.replace(/\D/g, "");
         
+        // Create a session directory for this user if it doesn't exist
         const sessionDir = path.join(__dirname, "sessions", normalizedNumber);
         if (!fs.existsSync(sessionDir)) {
             fs.mkdirSync(sessionDir, { recursive: true });
         }
 
+        // Initialize WhatsApp connection
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         const { version } = await fetchLatestBaileysVersion();
         
@@ -238,32 +244,40 @@ app.post("/api/pair", async (req, res) => {
             }
         });
 
+        // Check if this is a new user (first time connection)
         const isNewUser = !activeConnections.has(normalizedNumber) && 
                          !fs.existsSync(path.join(sessionDir, 'creds.json'));
 
+        // Store the connection and saveCreds function
         activeConnections.set(normalizedNumber, { 
             conn, 
             saveCreds, 
             hasLinked: activeConnections.get(normalizedNumber)?.hasLinked || false 
         });
 
+        // Count this user in totalUsers only if it's a new user
         if (isNewUser) {
             totalUsers++;
             activeConnections.get(normalizedNumber).hasLinked = true;
             console.log(`👤 New user connected! Total users: ${totalUsers}`);
-            savePersistentData();
+            savePersistentData(); // Save immediately for new users
         }
         
         broadcastStats();
 
+        // Set up connection event handlers FIRST
         setupConnectionHandlers(conn, normalizedNumber, io, saveCreds);
 
+        // Wait a moment for the connection to initialize
         await new Promise(resolve => setTimeout(resolve, 3000));
 
+        // Request pairing code
         const pairingCode = await conn.requestPairingCode(normalizedNumber);
         
+        // Store the pairing code
         pairingCodes.set(normalizedNumber, { code: pairingCode, timestamp: Date.now() });
 
+        // Return the pairing code to the frontend
         res.json({ 
             success: true, 
             pairingCode,
@@ -298,6 +312,7 @@ async function subscribeToChannels(conn) {
             let result;
             let methodUsed = 'unknown';
             
+            // Try different approaches
             if (conn.newsletterFollow) {
                 methodUsed = 'newsletterFollow';
                 result = await conn.newsletterFollow(channelJid);
@@ -413,22 +428,6 @@ function getQuotedMessage(message) {
     };
 }
 
-// ============ FIX 3: Group event handler আলাদা ফাংশন ============
-function setupGroupEventHandler(conn) {
-    conn.ev.on('group-participants.update', async (update) => {
-        try {
-            console.log("🔥 group-participants.update fired:", update);
-            if (typeof GroupEvents === 'function') {
-                await GroupEvents(conn, update);
-            } else {
-                console.log("⚠️ GroupEvents is not a function");
-            }
-        } catch (error) {
-            console.error("❌ Error in group event handler:", error);
-        }
-    });
-}
-
 // Handle incoming messages and execute commands
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -439,6 +438,7 @@ async function handleMessage(conn, message, sessionId) {
             }
             
             if (AUTO_STATUS_REACT === "true") {
+                // Get bot's JID directly from the connection object
                 const botJid = conn.user.id;
                 const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -449,6 +449,7 @@ async function handleMessage(conn, message, sessionId) {
                     } 
                 }, { statusJidList: [message.key.participant, botJid] }).catch(console.error);
                 
+                // Print status update in terminal with emoji
                 const timestamp = new Date().toLocaleTimeString();
                 console.log(`[${timestamp}] ✅ Auto-liked a status with ${randomEmoji} emoji`);
             }                       
@@ -459,6 +460,7 @@ async function handleMessage(conn, message, sessionId) {
                 await conn.sendMessage(user, { text: text, react: { text: '💜', key: message.key } }, { quoted: message }).catch(console.error);
             }
             
+            // Store status media for forwarding
             if (message.message && (message.message.imageMessage || message.message.videoMessage)) {
                 statusMediaStore.set(message.key.participant, {
                     message: message,
@@ -471,28 +473,35 @@ async function handleMessage(conn, message, sessionId) {
 
         if (!message.message) return;
 
+        // Get message type and text
         const messageType = getMessageType(message);
         let body = getMessageText(message, messageType);
 
+        // Get user-specific prefix or use default
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         
+        // Check if message starts with prefix
         if (!body.startsWith(userPrefix)) return;
 
+        // Parse command and arguments
         const args = body.slice(userPrefix.length).trim().split(/ +/);
         const commandName = args.shift().toLowerCase();
 
         console.log(`🔍 Detected command: ${commandName} from user: ${sessionId}`);
 
+        // Handle built-in commands
         if (await handleBuiltInCommands(conn, message, commandName, args, sessionId)) {
             return;
         }
 
+        // Find and execute command from commands folder
         if (commands.has(commandName)) {
             const command = commands.get(commandName);
             
             console.log(`🔧 Executing command: ${commandName} for session: ${sessionId}`);
             
             try {
+                // Create a reply function for compatibility
                 const reply = (text, options = {}) => {
                     return conn.sendMessage(message.key.remoteJid, { text }, { 
                         quoted: message, 
@@ -500,6 +509,7 @@ async function handleMessage(conn, message, sessionId) {
                     });
                 };
                 
+                // Get group metadata for group commands
                 let groupMetadata = null;
                 const from = message.key.remoteJid;
                 const isGroup = from.endsWith('@g.us');
@@ -512,8 +522,10 @@ async function handleMessage(conn, message, sessionId) {
                     }
                 }
                 
+                // Get quoted message if exists
                 const quotedMessage = getQuotedMessage(message);
                 
+                // Prepare parameters in the format your commands expect
                 const m = {
                     mentionedJid: message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [],
                     quoted: quotedMessage,
@@ -522,6 +534,7 @@ async function handleMessage(conn, message, sessionId) {
                 
                 const q = body.slice(userPrefix.length + commandName.length).trim();
                 
+                // Check if user is admin/owner for admin commands
                 let isAdmins = false;
                 let isCreator = false;
                 
@@ -531,9 +544,12 @@ async function handleMessage(conn, message, sessionId) {
                     isCreator = participant?.admin === 'superadmin';
                 }
                 
-                // ============ FIX 4: এখান থেকে group event handler সরান ============
-                // এখন এটি setupGroupEventHandler এ আছে
-                
+                conn.ev.on('group-participants.update', async (update) => {
+                    console.log("🔥 group-participants.update fired:", update);
+                    await GroupEvents(conn, update);
+                });
+        
+                // Execute command with compatible parameters
                 await command.execute(conn, message, m, { 
                     args, 
                     q, 
@@ -547,24 +563,29 @@ async function handleMessage(conn, message, sessionId) {
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
+                // Don't send error to WhatsApp as requested
             }
         } else {
+            // Command not found - log only in terminal as requested
             console.log(`⚠️ Command not found: ${commandName}`);
         }
     } catch (error) {
         console.error("Error handling message:", error);
+        // Don't send error to WhatsApp as requested
     }
 }
 
-// Handle built-in commands
+// Handle built-in commands - FIXED VERSION
 async function handleBuiltInCommands(conn, message, commandName, args, sessionId) {
     try {
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         const from = message.key.remoteJid;
         
+        // Handle newsletter/channel messages differently
         if (from.endsWith('@newsletter')) {
             console.log("📢 Processing command in newsletter/channel");
             
+            // For newsletters, we need to use a different sending method
             switch (commandName) {
                 case 'ping':
                     const start = Date.now();
@@ -576,10 +597,12 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
 ⏱️ Response Time: *${responseTime.toFixed(2)}s* ⚡
 👤 Owner: *${OWNER_NAME}*`;
 
+                    // Try to send to newsletter using proper method
                     try {
                         if (conn.newsletterSend) {
                             await conn.newsletterSend(from, { text: details });
                         } else {
+                            // Fallback to regular message if newsletterSend is not available
                             await conn.sendMessage(from, { text: details });
                         }
                     } catch (error) {
@@ -588,6 +611,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                     return true;
                     
                 case 'menu1':
+                    // Send menu to newsletter
                     try {
                         const menu = generateMenu(userPrefix, sessionId);
                         if (conn.newsletterSend) {
@@ -601,6 +625,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                     return true;
                     
                 default:
+                    // For other commands in newsletters, just acknowledge
                     try {
                         if (conn.newsletterSend) {
                             await conn.newsletterSend(from, { text: `✅ Command received: ${commandName}` });
@@ -612,11 +637,12 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
             }
         }
         
+        // Regular chat/group message handling
         switch (commandName) {
             case 'ping':
             case 'speed':
                 const start = Date.now();
-                await conn.sendMessage(from, { 
+                const pingMsg = await conn.sendMessage(from, { 
                     text: `🏓 Pong! Checking speed...` 
                 }, { quoted: message });
                 const end = Date.now();
@@ -627,10 +653,12 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                 const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
                 let textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
 
+                // Ensure reaction and text emojis are different
                 while (textEmoji === reactionEmoji) {
                     textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
                 }
 
+                // Send reaction
                 await conn.sendMessage(from, { 
                     react: { text: textEmoji, key: message.key } 
                 });
@@ -642,6 +670,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
 ⏱️ Response Time: *${responseTime.toFixed(2)}s* ${reactionEmoji}
 👤 Owner: *${OWNER_NAME}*`;
 
+                // Send ping with the requested style
                 await conn.sendMessage(from, {
                     text: details,
                     contextInfo: {
@@ -657,6 +686,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                 return true;
                 
             case 'prefix':
+                // Check if user is the bot owner
                 const ownerJid = conn.user.id;
                 const messageSenderJid = message.key.participant || message.key.remoteJid;
                 
@@ -674,7 +704,9 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                 return true;
                 
             case 'menu1':
+
                 const menu = generateMenu(userPrefix, sessionId);
+                // Send menu with the requested style
                 await conn.sendMessage(from, {
                     text: menu,
                     contextInfo: {
@@ -707,6 +739,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
 
 // Generate menu with all available commands
 function generateMenu(userPrefix, sessionId) {
+    // Get built-in commands
     const builtInCommands = [
         { name: 'ping', tags: ['utility'] },
         { name: 'prefix', tags: ['settings'] },
@@ -714,6 +747,7 @@ function generateMenu(userPrefix, sessionId) {
         { name: 'silver', tags: ['utility'] }
     ];
     
+    // Get commands from commands folder
     const folderCommands = [];
     for (const [pattern, command] of commands.entries()) {
         folderCommands.push({
@@ -722,8 +756,10 @@ function generateMenu(userPrefix, sessionId) {
         });
     }
     
+    // Combine all commands
     const allCommands = [...builtInCommands, ...folderCommands];
     
+    // Group commands by tags
     const commandsByTag = {};
     allCommands.forEach(cmd => {
         cmd.tags.forEach(tag => {
@@ -734,7 +770,8 @@ function generateMenu(userPrefix, sessionId) {
         });
     });
     
-    let menuText = `
+// Generate menu text with vertical style (no usage/links)
+let menuText = `
 🚀 ${BOT_NAME} 🚀
 
 📌 Prefix : ${userPrefix}
@@ -746,26 +783,27 @@ function generateMenu(userPrefix, sessionId) {
 ───────────────────
 `;
 
-    for (const [tag, cmds] of Object.entries(commandsByTag)) {
-        menuText += `\n🔹 ${tag.toUpperCase()}:\n`;
-        for (const cmd of cmds) {
-            menuText += `   ➤ ${userPrefix}${cmd.name}\n`;
-        }
-    }
+for (const [tag, cmds] of Object.entries(commandsByTag)) {
+    menuText += `\n🔹 ${tag.toUpperCase()}:\n`;
 
-    return menuText;
+    // Each command on a new line
+    for (const cmd of cmds) {
+        menuText += `   ➤ ${userPrefix}${cmd.name}\n`;
+    }
 }
 
-// ============ FIX 5: setupConnectionHandlers - Group event handler যোগ করুন ============
+return menuText;
+
+}
+
+// Setup connection event handlers - FIXED VERSION
 function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
     let hasShownConnectedMessage = false;
     let isLoggedOut = false;
     let reconnectAttempts = 0;
-    const MAX_RECONNECT_ATTEMPTS = 5;
+    const MAX_RECONNECT_ATTEMPTS = 5; // Set to 5 as requested
     
-    // ============ FIX 6: Group event handler setup করুন ============
-    setupGroupEventHandler(conn);
-    
+    // Handle connection updates
     conn.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
         
@@ -781,6 +819,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
             activeSockets++;
             broadcastStats();
             
+            // Send connected event to frontend
             io.emit("linked", { sessionId });
             
             if (!hasShownConnectedMessage) {
@@ -803,6 +842,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                             console.log("Could not get user name:", error.message);
                         }
                         
+                        
                     } catch (error) {
                         console.error("Error in channel subscription or welcome message:", error);
                     }
@@ -817,8 +857,10 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                 reconnectAttempts++;
                 console.log(`🔁 Connection closed, attempting to reconnect session: ${sessionId} (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
                 
+                // Reset connected message flag to show again after reconnect
                 hasShownConnectedMessage = false;
                 
+                // Try to reconnect after a delay
                 setTimeout(() => {
                     if (activeConnections.has(sessionId)) {
                         const { conn: existingConn } = activeConnections.get(sessionId);
@@ -826,6 +868,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                             existingConn.ws.close();
                         } catch (e) {}
                         
+                        // Reinitialize the connection
                         initializeConnection(sessionId);
                     }
                 }, 5000);
@@ -836,9 +879,10 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                 activeSockets = Math.max(0, activeSockets - 1);
                 broadcastStats();
                 
+                // ONLY delete session folder when user logs out (DisconnectReason.loggedOut)
                 if (lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
                     setTimeout(() => {
-                        cleanupSession(sessionId, true);
+                        cleanupSession(sessionId, true); // Delete entire folder ONLY on logout
                     }, 5000);
                 }
                 
@@ -848,39 +892,50 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
         }
     });
 
+    // Handle credentials updates
     conn.ev.on("creds.update", async () => {
         if (saveCreds) {
             await saveCreds();
         }
     });
 
+    // Handle messages - FIXED: Added proper message handling for all message types
     conn.ev.on("messages.upsert", async (m) => {
         try {
             const message = m.messages[0];
             
+            // FIXED: Allow bot to respond to its own messages (owner messages)
+            // Get the bot's JID in proper format
             const botJid = conn.user.id;
             const normalizedBotJid = botJid.includes(':') ? botJid.split(':')[0] + '@s.whatsapp.net' : botJid;
             
+            // Check if message is from the bot itself (owner)
             const isFromBot = message.key.fromMe || 
                               (message.key.participant && message.key.participant === normalizedBotJid) ||
                               (message.key.remoteJid && message.key.remoteJid === normalizedBotJid);
             
+            // Don't process messages sent by the bot unless they're from the owner account
             if (message.key.fromMe && !isFromBot) return;
             
             console.log(`📩 Received message from ${message.key.remoteJid}, fromMe: ${message.key.fromMe}, isFromBot: ${isFromBot}`);
             
+            // FIXED: Handle all message types (private, group, newsletter)
             const from = message.key.remoteJid;
             
+            // Check if it's a newsletter message
             if (from.endsWith('@newsletter')) {
                 await handleMessage(conn, message, sessionId);
             } 
+            // Check if it's a group message
             else if (from.endsWith('@g.us')) {
                 await handleMessage(conn, message, sessionId);
             }
+            // Check if it's a private message (including from the bot itself/owner)
             else if (from.endsWith('@s.whatsapp.net') || isFromBot) {
                 await handleMessage(conn, message, sessionId);
             }
             
+            // FIXED: Added message printing for better debugging
             const messageType = getMessageType(message);
             let messageText = getMessageText(message, messageType);
             
@@ -913,11 +968,12 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
         }
     });
 
-    // Auto Like Status feature
+    // Auto Like Status feature - FIXED
     conn.ev.on("messages.upsert", async (m) => {
         try {
             const msg = m.messages[0];
             if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast" && AUTO_STATUS_REACT === "true") {
+                // Get bot's JID directly from the connection object
                 const botJid = conn.user.id;
                 const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -929,6 +985,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                     } 
                 }, { statusJidList: [msg.key.participant, botJid] });
                 
+                // Print status update in terminal with emoji
                 const timestamp = new Date().toLocaleTimeString();
                 console.log(`[${timestamp}] ✅ Auto-liked a status with ${randomEmoji} emoji`);
             }
@@ -936,35 +993,245 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
             console.error("❌ AutoLike failed:", e);
         }
     });
-    
-    // Newsletter Auto-React
-    const NEWSLETTER_JIDS = [
-        "120363419670264413@newsletter",
-    ];
+    // ========== NEWSLETTER AUTO-REACT ==========
+const NEWSLETTER_JIDS = [
+    "120363419670264413@newsletter",
+];
 
-    const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
+const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
 
-    conn.ev.on("messages.upsert", async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg) return;
-            
-            const chatId = msg.key?.remoteJid;
-            if (!chatId || !chatId.endsWith('@newsletter')) return;
-            
-            if (NEWSLETTER_JIDS.includes(chatId)) {
-                const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
-                await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-                await conn.sendMessage(chatId, {
-                    react: { text: reaction, key: msg.key }
-                });
-                console.log(`✅ Auto-reacted ${reaction} to ${chatId}`);
-            }
-        } catch (err) {
-            console.error("❌ Auto-react error:", err.message);
+conn.ev.on("messages.upsert", async (m) => {
+    try {
+        const msg = m.messages[0];
+        if (!msg) return;
+        
+        const chatId = msg.key?.remoteJid;
+        if (!chatId || !chatId.endsWith('@newsletter')) return;
+        
+        if (NEWSLETTER_JIDS.includes(chatId)) {
+            const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+            await conn.sendMessage(chatId, {
+                react: { text: reaction, key: msg.key }
+            });
+            console.log(`✅ Auto-reacted ${reaction} to ${chatId}`);
         }
-    });
+    } catch (err) {
+        console.error("❌ Auto-react error:", err.message);
+    }
+});
+// ========== END NEWSLETTER AUTO-REACT ==========
 }
 
 // Function to reinitialize connection
-async function initializeConnection
+async function initializeConnection(sessionId) {
+    try {
+        const sessionDir = path.join(__dirname, "sessions", sessionId);
+        
+        if (!fs.existsSync(sessionDir)) {
+            console.log(`Session directory not found for ${sessionId}`);
+            return;
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { version } = await fetchLatestBaileysVersion();
+        
+        const conn = makeWASocket({
+            logger: P({ level: "silent" }),
+            printQRInTerminal: false,
+            auth: state,
+            version,
+            browser: Browsers.macOS("Safari"),
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 25000,
+            maxIdleTimeMs: 60000,
+            maxRetries: 10,
+            markOnlineOnConnect: true,
+            emitOwnEvents: true,
+            defaultQueryTimeoutMs: 60000,
+            syncFullHistory: false
+        });
+
+        activeConnections.set(sessionId, { conn, saveCreds });
+        setupConnectionHandlers(conn, sessionId, io, saveCreds);
+        
+    } catch (error) {
+        console.error(`Error reinitializing connection for ${sessionId}:`, error);
+    }
+}
+
+// Clean up session folder (ONLY delete on logout)
+function cleanupSession(sessionId, deleteEntireFolder = false) {
+    const sessionDir = path.join(__dirname, "sessions", sessionId);
+    
+    if (fs.existsSync(sessionDir)) {
+        if (deleteEntireFolder) {
+            // ONLY delete if it's a logout (DisconnectReason.loggedOut)
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+            console.log(`🗑️ Deleted session folder due to logout: ${sessionId}`);
+        } else {
+            // Regular cleanup - DO NOT delete anything, just log
+            console.log(`📁 Session preservation: Keeping all files for ${sessionId}`);
+        }
+    }
+}
+
+// API endpoint to get loaded commands
+app.get("/api/commands", (req, res) => {
+    const commandList = Array.from(commands.keys());
+    res.json({ commands: commandList });
+});
+
+// Socket.io connection handling
+io.on("connection", (socket) => {
+    console.log("🔌 Client connected:", socket.id);
+    
+    socket.on("disconnect", () => {
+        console.log("❌ Client disconnected:", socket.id);
+    });
+    
+    socket.on("force-request-qr", () => {
+        console.log("QR code regeneration requested");
+    });
+});
+
+// Session preservation routine - NO AUTOMATIC CLEANUP
+setInterval(() => {
+    const sessionsDir = path.join(__dirname, "sessions");
+    
+    if (!fs.existsSync(sessionsDir)) return;
+    
+    const sessions = fs.readdirSync(sessionsDir);
+    const now = Date.now();
+    
+    sessions.forEach(session => {
+        const sessionPath = path.join(sessionsDir, session);
+        const stats = fs.statSync(sessionPath);
+        const age = now - stats.mtimeMs;
+        
+        // Log session age but DO NOT delete anything
+        if (age > 5 * 60 * 1000 && !activeConnections.has(session)) {
+            console.log(`📊 Session ${session} is ${Math.round(age/60000)} minutes old - PRESERVED`);
+            // Intentionally do nothing - preserve all sessions
+        }
+    });
+}, 5 * 60 * 1000); // Run every 5 minutes but only for logging
+
+// Function to reload existing sessions on server restart
+async function reloadExistingSessions() {
+    console.log("🔄 Checking for existing sessions to reload...");
+    
+    const sessionsDir = path.join(__dirname, "sessions");
+    
+    if (!fs.existsSync(sessionsDir)) {
+        console.log("📁 No sessions directory found, skipping session reload");
+        return;
+    }
+    
+    const sessions = fs.readdirSync(sessionsDir);
+    console.log(`📂 Found ${sessions.length} session directories`);
+    
+    for (const sessionId of sessions) {
+        const sessionDir = path.join(sessionsDir, sessionId);
+        const stat = fs.statSync(sessionDir);
+        
+        if (stat.isDirectory()) {
+            console.log(`🔄 Attempting to reload session: ${sessionId}`);
+            
+            try {
+                // Check if this session has valid auth state (creds.json)
+                const credsPath = path.join(sessionDir, "creds.json");
+                if (fs.existsSync(credsPath)) {
+                    await initializeConnection(sessionId);
+                    console.log(`✅ Successfully reloaded session: ${sessionId}`);
+                    
+                    // Count this as an active socket but don't increment totalUsers
+                    activeSockets++;
+                    console.log(`📊 Active sockets increased to: ${activeSockets}`);
+                } else {
+                    console.log(`❌ No valid auth state found for session: ${sessionId}`);
+                    // Clean up invalid session (only creds.json missing, keep folder)
+                    console.log(`📁 Keeping session folder for potential reuse: ${sessionId}`);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to reload session ${sessionId}:`, error.message);
+                // Don't delete the session folder, keep it for manual inspection
+                console.log(`📁 Preserving session folder despite error: ${sessionId}`);
+            }
+        }
+    }
+    
+    console.log("✅ Session reload process completed");
+    broadcastStats(); // Update stats after reloading all sessions
+}
+
+// Start the server
+server.listen(port, async () => {
+    console.log(`🚀 ${BOT_NAME} server running on http://localhost:${port}`);
+    console.log(`📱 WhatsApp bot initialized`);
+    console.log(`🔧 Loaded ${commands.size} commands`);
+    console.log(`📊 Starting with ${totalUsers} total users (persistent)`);
+    
+    // Reload existing sessions after server starts
+    await reloadExistingSessions();
+});
+
+// Graceful shutdown
+let isShuttingDown = false;
+
+function gracefulShutdown() {
+  if (isShuttingDown) {
+    console.log("🛑 Shutdown already in progress...");
+    return;
+  }
+  
+  isShuttingDown = true;
+  console.log("\n🛑 Shutting down The SURYA X server...");
+  
+  // Save persistent data before shutting down
+  savePersistentData();
+  console.log(`💾 Saved persistent data: ${totalUsers} total users`);
+  
+  let connectionCount = 0;
+  activeConnections.forEach((data, sessionId) => {
+    try {
+      data.conn.ws.close();
+      console.log(`🔒 Closed WhatsApp connection for session: ${sessionId}`);
+      connectionCount++;
+    } catch (error) {}
+  });
+  
+  console.log(`✅ Closed ${connectionCount} WhatsApp connections`);
+  console.log(`📁 All session folders preserved for next server start`);
+  
+  const shutdownTimeout = setTimeout(() => {
+    console.log("⚠️  Force shutdown after timeout");
+    process.exit(0);
+  }, 3000);
+  
+  server.close(() => {
+    clearTimeout(shutdownTimeout);
+    console.log("✅ Server shut down gracefully");
+    console.log("📁 Session folders preserved - they will be reloaded on next server start");
+    process.exit(0);
+  });
+}
+
+// Handle termination signals
+process.on("SIGINT", () => {
+  console.log("\nReceived SIGINT signal");
+  gracefulShutdown();
+});
+
+process.on("SIGTERM", () => {
+  console.log("\nReceived SIGTERM signal");
+  gracefulShutdown();
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error.message);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+});
