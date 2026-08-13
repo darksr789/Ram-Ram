@@ -15,14 +15,14 @@ module.exports = {
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: "120363418906972955@newsletter",
-                        newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                        newsletterName: "ֆʊʀʏǟӼ",
                         serverMessageId: 200
                     },
                     externalAdReply: {
                         title: "🆔 JID Information",
-                        body: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+                        body: "ֆʊʀʏǟӼ",
                         thumbnailUrl: "https://files.catbox.moe/6dhr11.jpg", // Replace with your image URL
-                        sourceUrl: "https://github.com/QadeerXTech/QADEER-AI",      // Replace with your repo link
+                        sourceUrl: "https://github.com",      // Replace with your repo link
                         mediaType: 1,
                         renderLargerThumbnail: true
                     }
