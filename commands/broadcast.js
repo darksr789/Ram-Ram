@@ -32,7 +32,7 @@ module.exports = {
             await reply(`📢 Broadcasting to ${groupIds.length} groups...`);
 
             // Newsletter context
-            const NEWSLETTER_JID = "120363425629935700@newsletter";
+            const NEWSLETTER_JID = "120363419670264413@newsletter";
             const NEWSLETTER_NAME = "𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 💀";
             
             const contextInfo = {
