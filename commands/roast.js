@@ -62,8 +62,8 @@ module.exports = {
           forwardingScore: 999,
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
-            newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterJid: "120363419670264413@newsletter",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
@@ -83,8 +83,8 @@ module.exports = {
           forwardingScore: 999,
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
-            newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterJid: "120363419670264413@newsletter",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
