@@ -45,7 +45,7 @@ function getRuntimeCommand() {
               forwardingScore: 999,
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
-                newsletterJid: "120363418906972955@newsletter",
+                newsletterJid: "120363419670264413@newsletter",
                 newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 147
               }
@@ -59,14 +59,14 @@ function getRuntimeCommand() {
               forwardingScore: 999,
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
-                newsletterJid: "120363418906972955@newsletter",
+                newsletterJid: "120363419670264413@newsletter",
                 newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 147
               },
               externalAdReply: {
                 title: "SURYA-X - MINI RUNTIME",
                 body: "SURYA-X - MINI runtime information ",
-                thumbnailUrl: "https://files.catbox.moe/6dhr11.jpg",
+                thumbnailUrl: "https://files.catbox.moe/c3267k.png",
                 sourceUrl: "https://github.com",
                 mediaType: 1,
                 renderLargerThumbnail: true
@@ -93,7 +93,7 @@ function getRuntimeCommand() {
               forwardingScore: 999,
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
-                newsletterJid: "120363418906972955@newsletter",
+                newsletterJid: "120363419670264413@newsletter",
                 newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 148
               }
@@ -107,14 +107,14 @@ function getRuntimeCommand() {
               forwardingScore: 999,
               isForwarded: true,
               forwardedNewsletterMessageInfo: {
-                newsletterJid: "120363418906972955@newsletter",
+                newsletterJid: "120363419670264413@newsletter",
                 newsletterName: "ֆʊʀʏǟӼ",
                 serverMessageId: 148
               },
               externalAdReply: {
                 title: "❌ Error",
                 body: "Failed to fetch runtime information",
-                thumbnailUrl: "https://files.catbox.moe/6dhr11.jpg",
+                thumbnailUrl: "https://files.catbox.moe/c3267k.png",
                 sourceUrl: "https://github.com",
                 mediaType: 1,
                 renderLargerThumbnail: true
