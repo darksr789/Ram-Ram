@@ -29,7 +29,7 @@ module.exports = {
                 txt += `*Record #${i+1}*\n📱: ${r.mobile}\n👤: ${r.name}\n🆔: ${r.cnic}\n🏠: ${r.address}\n\n`;
             });
 
-            txt += `\n> 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 💀`;
+            txt += `\n> SURYA-X 💀`;
 
             await reply(txt);
 
