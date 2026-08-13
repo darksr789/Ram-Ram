@@ -189,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div style="text-align: center; color: var(--success);">
         <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 20px;"></i>
         <h3 style="margin-bottom: 16px;">✅ Successfully Linked!</h3>
-        <p>Your device has been successfully connected. You can now use TechX MD features.</p>
+        <p>Your device has been successfully connected. You can now use SURYA X features.</p>
         <p style="margin-top: 12px; opacity: 0.8;"><small>Session ID: ${sessionId}</small></p>
       </div>
     `, "success");
