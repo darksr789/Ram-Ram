@@ -18,7 +18,7 @@ module.exports = {
 ┃ ${prefix}${command} <ʟɪɴᴋ> <ᴇᴍᴏᴊɪ1,ᴇᴍᴏᴊɪ2>
 ┃
 ┃ 💡 *Exᴀᴍᴘʟᴇ:*
-┃ ${prefix}${command} https://whatsapp.com/channel/0029VbDKjmv7IUYP9uQj2g2h/413 😭,🔥
+┃ ${prefix}${command} https://whatsapp.com/xxxxxxxxxxxxxxxxxxxxxx 😭,🔥
 ┃
 ┃ ⚠️ *Mᴀx 4 ᴇᴍᴏᴊɪs ᴀʟʟᴏᴡᴇᴅ*
 ┃
