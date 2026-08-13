@@ -20,7 +20,7 @@ module.exports = {
           isForwarded: true,
           forwardedNewsletterMessageInfo: {
             newsletterJid: "120363418906972955@newsletter",
-            newsletterName: "𝐐α͜͡𝐝εεɼ𝐗𝐓ε𝐜𝐡",
+            newsletterName: "ֆʊʀʏǟӼ",
             serverMessageId: 200
           }
         }
