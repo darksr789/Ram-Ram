@@ -10,9 +10,9 @@ module.exports = {
     execute: async (conn, message, m, { from, reply, userPrefix, isGroup }) => {
         try {
             const prefix = userPrefix || ".";
-            const NEWSLETTER_JID = "120363425629935700@newsletter";
+            const NEWSLETTER_JID = "120363419670264413@newsletter";
             const NEWSLETTER_NAME = "ֆʊʀʏǟӼ💀";
-            const menuImage = 'https://up6.cc/2026/04/177631893622821.jpg';
+            const menuImage = 'https://files.catbox.moe/c3267k.png';
 
             const botName = "𓆩 SURYA X💀𓆪";
             const ownerName = "DARK SURYA";
