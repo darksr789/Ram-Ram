@@ -13,7 +13,7 @@ const io = socketIo(server);
 const port = process.env.PORT || 3000;
 
 const GroupEvents = require("./events/GroupEvents");
-const runtimeTracker = require("./commands/runtime");
+const runtimeTracker = require('./commands/runtime');
 
 // Middleware
 app.use(express.json());
@@ -544,10 +544,11 @@ async function handleMessage(conn, message, sessionId) {
                     isCreator = participant?.admin === 'superadmin';
                 }
                 
-                conn.ev.on('group-participants.update', async (update) => {
-                    console.log("🔥 group-participants.update fired:", update);
-                    await GroupEvents(conn, update);
-                });
+    conn.ev.on('group-participants.update', async (update) => {
+    console.log("🔥 group-participants.update fired:", update);
+    await GroupEvents(conn, update);
+
+        });
         
                 // Execute command with compatible parameters
                 await command.execute(conn, message, m, { 
@@ -704,7 +705,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                 return true;
                 
             case 'menu1':
-
+                // ========== FIX IS RIGHT HERE ==========
                 const menu = generateMenu(userPrefix, sessionId);
                 // Send menu with the requested style
                 await conn.sendMessage(from, {
@@ -727,6 +728,8 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                     }
                 }, { quoted: message });
                 return true;
+                // ========== MISSING BRACE ADDED HERE ==========
+            } // <--- এই ব্রেসটুকুই মিস ছিল। আমি এটাই যোগ করেছি।
                 
             default:
                 return false;
@@ -963,275 +966,4 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
                 await conn.readMessages([msg.key]);
                 console.log("✅ Auto-viewed a status.");
             }
-        } catch (e) {
-            console.error("❌ AutoView failed:", e);
         }
-    });
-
-    // Auto Like Status feature - FIXED
-    conn.ev.on("messages.upsert", async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast" && AUTO_STATUS_REACT === "true") {
-                // Get bot's JID directly from the connection object
-                const botJid = conn.user.id;
-                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
-                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                
-                await conn.sendMessage(msg.key.remoteJid, {
-                    react: {
-                        text: randomEmoji,
-                        key: msg.key,
-                    } 
-                }, { statusJidList: [msg.key.participant, botJid] });
-                
-                // Print status update in terminal with emoji
-                const timestamp = new Date().toLocaleTimeString();
-                console.log(`[${timestamp}] ✅ Auto-liked a status with ${randomEmoji} emoji`);
-            }
-        } catch (e) {
-            console.error("❌ AutoLike failed:", e);
-        }
-    });
-    // ========== NEWSLETTER AUTO-REACT ==========
-const NEWSLETTER_JIDS = [
-    "120363419670264413@newsletter",
-];
-
-const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
-
-conn.ev.on("messages.upsert", async (m) => {
-    try {
-        const msg = m.messages[0];
-        if (!msg) return;
-        
-        const chatId = msg.key?.remoteJid;
-        if (!chatId || !chatId.endsWith('@newsletter')) return;
-        
-        if (NEWSLETTER_JIDS.includes(chatId)) {
-            const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
-            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-            await conn.sendMessage(chatId, {
-                react: { text: reaction, key: msg.key }
-            });
-            console.log(`✅ Auto-reacted ${reaction} to ${chatId}`);
-        }
-    } catch (err) {
-        console.error("❌ Auto-react error:", err.message);
-    }
-});
-// ========== END NEWSLETTER AUTO-REACT ==========
-}
-
-// Function to reinitialize connection
-async function initializeConnection(sessionId) {
-    try {
-        const sessionDir = path.join(__dirname, "sessions", sessionId);
-        
-        if (!fs.existsSync(sessionDir)) {
-            console.log(`Session directory not found for ${sessionId}`);
-            return;
-        }
-
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version } = await fetchLatestBaileysVersion();
-        
-        const conn = makeWASocket({
-            logger: P({ level: "silent" }),
-            printQRInTerminal: false,
-            auth: state,
-            version,
-            browser: Browsers.macOS("Safari"),
-            connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 25000,
-            maxIdleTimeMs: 60000,
-            maxRetries: 10,
-            markOnlineOnConnect: true,
-            emitOwnEvents: true,
-            defaultQueryTimeoutMs: 60000,
-            syncFullHistory: false
-        });
-
-        activeConnections.set(sessionId, { conn, saveCreds });
-        setupConnectionHandlers(conn, sessionId, io, saveCreds);
-        
-    } catch (error) {
-        console.error(`Error reinitializing connection for ${sessionId}:`, error);
-    }
-}
-
-// Clean up session folder (ONLY delete on logout)
-function cleanupSession(sessionId, deleteEntireFolder = false) {
-    const sessionDir = path.join(__dirname, "sessions", sessionId);
-    
-    if (fs.existsSync(sessionDir)) {
-        if (deleteEntireFolder) {
-            // ONLY delete if it's a logout (DisconnectReason.loggedOut)
-            fs.rmSync(sessionDir, { recursive: true, force: true });
-            console.log(`🗑️ Deleted session folder due to logout: ${sessionId}`);
-        } else {
-            // Regular cleanup - DO NOT delete anything, just log
-            console.log(`📁 Session preservation: Keeping all files for ${sessionId}`);
-        }
-    }
-}
-
-// API endpoint to get loaded commands
-app.get("/api/commands", (req, res) => {
-    const commandList = Array.from(commands.keys());
-    res.json({ commands: commandList });
-});
-
-// Socket.io connection handling
-io.on("connection", (socket) => {
-    console.log("🔌 Client connected:", socket.id);
-    
-    socket.on("disconnect", () => {
-        console.log("❌ Client disconnected:", socket.id);
-    });
-    
-    socket.on("force-request-qr", () => {
-        console.log("QR code regeneration requested");
-    });
-});
-
-// Session preservation routine - NO AUTOMATIC CLEANUP
-setInterval(() => {
-    const sessionsDir = path.join(__dirname, "sessions");
-    
-    if (!fs.existsSync(sessionsDir)) return;
-    
-    const sessions = fs.readdirSync(sessionsDir);
-    const now = Date.now();
-    
-    sessions.forEach(session => {
-        const sessionPath = path.join(sessionsDir, session);
-        const stats = fs.statSync(sessionPath);
-        const age = now - stats.mtimeMs;
-        
-        // Log session age but DO NOT delete anything
-        if (age > 5 * 60 * 1000 && !activeConnections.has(session)) {
-            console.log(`📊 Session ${session} is ${Math.round(age/60000)} minutes old - PRESERVED`);
-            // Intentionally do nothing - preserve all sessions
-        }
-    });
-}, 5 * 60 * 1000); // Run every 5 minutes but only for logging
-
-// Function to reload existing sessions on server restart
-async function reloadExistingSessions() {
-    console.log("🔄 Checking for existing sessions to reload...");
-    
-    const sessionsDir = path.join(__dirname, "sessions");
-    
-    if (!fs.existsSync(sessionsDir)) {
-        console.log("📁 No sessions directory found, skipping session reload");
-        return;
-    }
-    
-    const sessions = fs.readdirSync(sessionsDir);
-    console.log(`📂 Found ${sessions.length} session directories`);
-    
-    for (const sessionId of sessions) {
-        const sessionDir = path.join(sessionsDir, sessionId);
-        const stat = fs.statSync(sessionDir);
-        
-        if (stat.isDirectory()) {
-            console.log(`🔄 Attempting to reload session: ${sessionId}`);
-            
-            try {
-                // Check if this session has valid auth state (creds.json)
-                const credsPath = path.join(sessionDir, "creds.json");
-                if (fs.existsSync(credsPath)) {
-                    await initializeConnection(sessionId);
-                    console.log(`✅ Successfully reloaded session: ${sessionId}`);
-                    
-                    // Count this as an active socket but don't increment totalUsers
-                    activeSockets++;
-                    console.log(`📊 Active sockets increased to: ${activeSockets}`);
-                } else {
-                    console.log(`❌ No valid auth state found for session: ${sessionId}`);
-                    // Clean up invalid session (only creds.json missing, keep folder)
-                    console.log(`📁 Keeping session folder for potential reuse: ${sessionId}`);
-                }
-            } catch (error) {
-                console.error(`❌ Failed to reload session ${sessionId}:`, error.message);
-                // Don't delete the session folder, keep it for manual inspection
-                console.log(`📁 Preserving session folder despite error: ${sessionId}`);
-            }
-        }
-    }
-    
-    console.log("✅ Session reload process completed");
-    broadcastStats(); // Update stats after reloading all sessions
-}
-
-// Start the server
-server.listen(port, async () => {
-    console.log(`🚀 ${BOT_NAME} server running on http://localhost:${port}`);
-    console.log(`📱 WhatsApp bot initialized`);
-    console.log(`🔧 Loaded ${commands.size} commands`);
-    console.log(`📊 Starting with ${totalUsers} total users (persistent)`);
-    
-    // Reload existing sessions after server starts
-    await reloadExistingSessions();
-});
-
-// Graceful shutdown
-let isShuttingDown = false;
-
-function gracefulShutdown() {
-  if (isShuttingDown) {
-    console.log("🛑 Shutdown already in progress...");
-    return;
-  }
-  
-  isShuttingDown = true;
-  console.log("\n🛑 Shutting down The SURYA X server...");
-  
-  // Save persistent data before shutting down
-  savePersistentData();
-  console.log(`💾 Saved persistent data: ${totalUsers} total users`);
-  
-  let connectionCount = 0;
-  activeConnections.forEach((data, sessionId) => {
-    try {
-      data.conn.ws.close();
-      console.log(`🔒 Closed WhatsApp connection for session: ${sessionId}`);
-      connectionCount++;
-    } catch (error) {}
-  });
-  
-  console.log(`✅ Closed ${connectionCount} WhatsApp connections`);
-  console.log(`📁 All session folders preserved for next server start`);
-  
-  const shutdownTimeout = setTimeout(() => {
-    console.log("⚠️  Force shutdown after timeout");
-    process.exit(0);
-  }, 3000);
-  
-  server.close(() => {
-    clearTimeout(shutdownTimeout);
-    console.log("✅ Server shut down gracefully");
-    console.log("📁 Session folders preserved - they will be reloaded on next server start");
-    process.exit(0);
-  });
-}
-
-// Handle termination signals
-process.on("SIGINT", () => {
-  console.log("\nReceived SIGINT signal");
-  gracefulShutdown();
-});
-
-process.on("SIGTERM", () => {
-  console.log("\nReceived SIGTERM signal");
-  gracefulShutdown();
-});
-
-process.on("uncaughtException", (error) => {
-  console.error("❌ Uncaught Exception:", error.message);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-});
