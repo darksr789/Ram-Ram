@@ -13,7 +13,7 @@ const io = socketIo(server);
 const port = process.env.PORT || 3000;
 
 const GroupEvents = require("./events/GroupEvents");
-const runtimeTracker = require('./commands/runtime');
+const runtimeTracker = require("./commands/runtime");
 
 // Middleware
 app.use(express.json());
