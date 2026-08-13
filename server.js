@@ -89,10 +89,10 @@ io.on("connection", (socket) => {
 
 // Channel configuration
 const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split(',') : [
-    "120363425629935700@newsletter",
-    "120363425949353648@newsletter",
-    "120363404748661765@newsletter",
-    "120363408573182239@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
 
 ];
 
@@ -103,7 +103,7 @@ let PREFIX = process.env.PREFIX || ".";
 const BOT_NAME = process.env.BOT_NAME || "SURYA X";
 const OWNER_NAME = process.env.OWNER_NAME || "DARK SURYA";
 
-const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://up6.cc/2026/04/177631893622821.jpg";
+const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/c3267k.png";
 const REPO_LINK = process.env.REPO_LINK || "https://github.com";
 
 // Auto-status configuration
@@ -996,7 +996,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
     });
     // ========== NEWSLETTER AUTO-REACT ==========
 const NEWSLETTER_JIDS = [
-    "120363420639555414@newsletter",
+    "120363419670264413@newsletter",
 ];
 
 const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
