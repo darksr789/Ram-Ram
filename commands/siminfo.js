@@ -6,7 +6,7 @@ module.exports = {
     desc: "Get SIM information by mobile number",
     category: "tools",
     filename: __filename,
-    use: ".siminfo 923xxxxxxxxx",
+    use: ".siminfo 913xxxxxxxxx",
 
     execute: async (conn, message, m, { from, reply, args, q }) => {
         try {
