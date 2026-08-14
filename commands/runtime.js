@@ -100,7 +100,7 @@ function getRuntimeCommand() {
             }
           }, { quoted: message });
         } else {
-     texts for error message too
+     //texts for error message too
           await conn.sendMessage(from {
             text: "⚠️ Failed to fetch runtime info.",
             contextInfo: {
