@@ -1,5 +1,5 @@
 const yts = require('yt-search');
-const ytdl = require('@distube/ytdl-core');
+const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
@@ -25,39 +25,46 @@ module.exports = {
 
             await reply(`🎶 *Downloading:* **${video.title}** ... Please wait.`);
 
-            // Temporary path for audio file
-            const filePath = path.join(__dirname, `../temp_${Date.now()}.mp3`);
-
-            // FIXED: Standard audio filter without invalid 'highestaudio' quality string
-            const stream = ytdl(video.url, { 
-                filter: 'audioonly' 
-            });
-            const fileStream = fs.createWriteStream(filePath);
-
-            stream.pipe(fileStream);
-
-            fileStream.on('finish', async () => {
-                // Send audio to WhatsApp chat
-                await conn.sendMessage(from, {
-                    audio: fs.readFileSync(filePath),
-                    mimetype: 'audio/mp4',
-                    fileName: `${video.title}.mp3`
-                }, { quoted: message });
-
-                // Clean up temporary file
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
+            // Using direct API buffer to bypass YouTube Status Code 429 rate limits
+            const apiUrl = `https://api.cobalt.tools/api/json`;
+            
+            const response = await axios.post(apiUrl, {
+                url: video.url,
+                downloadMode: "audio",
+                audioFormat: "mp3"
+            }, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
                 }
             });
 
-            stream.on('error', (err) => {
-                console.error("YTDL Error:", err);
-                reply("❌ *Failed to download audio from YouTube. Please try again later.*");
-            });
+            if (response.data && response.data.url) {
+                // Send downloaded audio directly to WhatsApp
+                await conn.sendMessage(from, {
+                    audio: { url: response.data.url },
+                    mimetype: 'audio/mp4',
+                    fileName: `${video.title}.mp3`
+                }, { quoted: message });
+            } else {
+                // Fallback API if primary is busy
+                const fallbackUrl = `https://api.dreaded.site/api/ytdl/video?url=${encodeURIComponent(video.url)}`;
+                const fallbackRes = await axios.get(fallbackUrl);
+                
+                if (fallbackRes.data && fallbackRes.data.result && fallbackRes.data.result.download) {
+                    await conn.sendMessage(from, {
+                        audio: { url: fallbackRes.data.result.download.url },
+                        mimetype: 'audio/mp4',
+                        fileName: `${video.title}.mp3`
+                    }, { quoted: message });
+                } else {
+                    reply("❌ *Failed to fetch download link. Please try again in a few moments!*");
+                }
+            }
 
         } catch (error) {
             console.error("Song command error:", error);
-            reply("❌ *An error occurred while playing the song!*");
+            reply("❌ *An error occurred while downloading the song. YouTube rate limit hit, try again in a minute!*");
         }
     }
 };
