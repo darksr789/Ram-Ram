@@ -14,6 +14,34 @@ const port = process.env.PORT || 3000;
 
 const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
+const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
+
+// === Bot public/private mode ===
+const botModeFile = path.join(__dirname, 'database', 'botmode.txt');
+function loadBotMode() {
+    try {
+        if (fs.existsSync(botModeFile)) {
+            const saved = fs.readFileSync(botModeFile, 'utf-8').trim();
+            return saved !== 'private'; // default true unless explicitly "private"
+        }
+    } catch (e) {
+        console.error("Failed to read bot mode file:", e.message);
+    }
+    return true; // default: public
+}
+let BOT_PUBLIC_INITIAL = loadBotMode(); // (kept for reference/logging only; live checks always re-read the file)
+console.log(`🔧 Bot mode at startup: ${BOT_PUBLIC_INITIAL ? "PUBLIC" : "PRIVATE"}`);
+
+function isBotOwner(conn, sender) {
+    try {
+        return conn.user && conn.user.id.split(":")[0] === sender.split("@")[0];
+    } catch {
+        return false;
+    }
+}
+
+// Matches http(s) links, bare www. links, and WhatsApp group invite links
+const LINK_REGEX = /(https?:\/\/\S+)|(www\.\S+)|(chat\.whatsapp\.com\/\S+)/i;
 
 // Middleware
 app.use(express.json());
@@ -152,6 +180,14 @@ function loadCommands() {
                 // Single command file
                 commands.set(commandModule.pattern, commandModule);
                 console.log(`✅ Loaded command: ${commandModule.pattern}`);
+
+                // Also add aliases if they exist (this branch was previously skipped for aliases)
+                if (commandModule.alias && Array.isArray(commandModule.alias)) {
+                    commandModule.alias.forEach(alias => {
+                        commands.set(alias, commandModule);
+                        console.log(`✅ Loaded alias: ${alias} -> ${commandModule.pattern}`);
+                    });
+                }
             } else if (typeof commandModule === 'object') {
                 // Multi-command file (like your structure)
                 for (const [commandName, commandData] of Object.entries(commandModule)) {
@@ -428,6 +464,83 @@ function getQuotedMessage(message) {
     };
 }
 
+// Checks a group message for links and enforces the group's antilink setting.
+// Returns true if the message was handled (deleted/actioned) and processing should stop.
+async function handleAntilink(conn, message, body) {
+    try {
+        if (!message.key || message.key.fromMe) return false;
+        const from = message.key.remoteJid;
+        if (!from || !from.endsWith('@g.us')) return false;
+        if (!body || !LINK_REGEX.test(body)) return false;
+
+        const mode = getSetting(from, "antilink");
+        if (!mode) return false; // antilink disabled for this group
+
+        const sender = message.key.participant || message.key.remoteJid;
+
+        // Exempt group admins/owner from antilink
+        try {
+            const metadata = await conn.groupMetadata(from);
+            const participant = metadata.participants.find(p => p.id === sender);
+            const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+            if (isAdmin) return false;
+        } catch (e) {
+            console.error("Antilink: failed to fetch group metadata:", e.message);
+        }
+
+        // Delete the offending message
+        try {
+            await conn.sendMessage(from, { delete: message.key });
+        } catch (e) {
+            console.error("Antilink: failed to delete message:", e.message);
+        }
+
+        if (mode === "delete") {
+            return true;
+        }
+
+        if (mode === "kick") {
+            try {
+                await conn.groupParticipantsUpdate(from, [sender], "remove");
+                await conn.sendMessage(from, {
+                    text: `🚫 @${sender.split('@')[0]} was removed for posting a link.`,
+                    mentions: [sender]
+                });
+            } catch (e) {
+                console.error("Antilink: failed to kick user:", e.message);
+            }
+            return true;
+        }
+
+        if (mode === "warn") {
+            const count = incrementWarn(from, sender);
+            if (count >= 3) {
+                resetWarn(from, sender);
+                try {
+                    await conn.groupParticipantsUpdate(from, [sender], "remove");
+                    await conn.sendMessage(from, {
+                        text: `🚫 @${sender.split('@')[0]} was removed after 3 link warnings.`,
+                        mentions: [sender]
+                    });
+                } catch (e) {
+                    console.error("Antilink: failed to kick user after warnings:", e.message);
+                }
+            } else {
+                await conn.sendMessage(from, {
+                    text: `⚠️ @${sender.split('@')[0]}, links are not allowed here. Warning ${count}/3.`,
+                    mentions: [sender]
+                });
+            }
+            return true;
+        }
+
+        return false;
+    } catch (error) {
+        console.error("Antilink enforcement error:", error);
+        return false;
+    }
+}
+
 // Handle incoming messages and execute commands
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -477,6 +590,11 @@ async function handleMessage(conn, message, sessionId) {
         const messageType = getMessageType(message);
         let body = getMessageText(message, messageType);
 
+        // === Antilink enforcement (runs on every group message, not just commands) ===
+        if (await handleAntilink(conn, message, body)) {
+            return;
+        }
+
         // Get user-specific prefix or use default
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         
@@ -488,6 +606,13 @@ async function handleMessage(conn, message, sessionId) {
         const commandName = args.shift().toLowerCase();
 
         console.log(`🔍 Detected command: ${commandName} from user: ${sessionId}`);
+
+        // === Enforce private mode: only the bot owner can use commands ===
+        const senderForModeCheck = message.key.participant || message.key.remoteJid;
+        if (!loadBotMode() && !isBotOwner(conn, senderForModeCheck)) {
+            console.log(`🔒 Blocked command "${commandName}" from non-owner ${senderForModeCheck} (private mode)`);
+            return;
+        }
 
         // Handle built-in commands
         if (await handleBuiltInCommands(conn, message, commandName, args, sessionId)) {
@@ -543,6 +668,9 @@ async function handleMessage(conn, message, sessionId) {
                     isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
                     isCreator = participant?.admin === 'superadmin';
                 }
+
+                // True bot-owner check (works in DM and groups), separate from group "isCreator"
+                const isOwner = isBotOwner(conn, m.sender);
                 
     conn.ev.on('group-participants.update', async (update) => {
     console.log("🔥 group-participants.update fired:", update);
@@ -560,7 +688,8 @@ async function handleMessage(conn, message, sessionId) {
                     groupMetadata: groupMetadata,
                     sender: message.key.participant || message.key.remoteJid,
                     isAdmins: isAdmins,
-                    isCreator: isCreator
+                    isCreator: isCreator,
+                    isOwner: isOwner
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
@@ -976,7 +1105,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
             if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast" && AUTO_STATUS_REACT === "true") {
                 // Get bot's JID directly from the connection object
                 const botJid = conn.user.id;
-                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇮🇳', '💜', '💙', '🌝', '🖤', '💚'];
+                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 
                 await conn.sendMessage(msg.key.remoteJid, {
