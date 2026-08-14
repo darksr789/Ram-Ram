@@ -443,6 +443,16 @@ async function handleMessage(conn, message, sessionId) {
     try {
         if (!message.message) return;
 
+        // === Auto Typing & Auto Recording Feature ===
+        const autoTyping = process.env.AUTO_TYPING === "true";
+        const autoRecording = process.env.AUTO_RECORDING === "true";
+
+        if (autoTyping) {
+            await conn.sendPresenceUpdate('composing', message.key.remoteJid).catch(() => {});
+        } else if (autoRecording) {
+            await conn.sendPresenceUpdate('recording', message.key.remoteJid).catch(() => {});
+        }
+
         // Auto Status
         if (message.key && message.key.remoteJid === 'status@broadcast') {
             if (AUTO_STATUS_SEEN === "true") await conn.readMessages([message.key]).catch(()=>{});
