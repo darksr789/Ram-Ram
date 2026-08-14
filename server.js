@@ -15,6 +15,21 @@ const port = process.env.PORT || 3000;
 const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
 const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
+const { getMode: getBotMode } = require('./lib/botmode');
+
+// Normalizes any WhatsApp JID ("1234567890:12@s.whatsapp.net", "1234567890@g.us", etc.)
+// down to the bare phone number so senders can be compared reliably.
+function jidToBase(jid) {
+    return String(jid || "").split("@")[0].split(":")[0];
+}
+
+// Owner numbers that should be treated as "creator" on every session
+// (in addition to the number the session itself is paired with).
+// Set OWNER_NUMBER="1234567890,0987654321" in your .env if needed.
+function getGlobalOwners() {
+    if (!process.env.OWNER_NUMBER) return [];
+    return process.env.OWNER_NUMBER.split(",").map(n => n.trim()).filter(Boolean);
+}
 
 // Matches http(s) links, bare www. links, and WhatsApp group invite links
 const LINK_REGEX = /(https?:\/\/\S+)|(www\.\S+)|(chat\.whatsapp\.com\/\S+)/i;
@@ -622,14 +637,25 @@ async function handleMessage(conn, message, sessionId) {
                 
                 // Check if user is admin/owner for admin commands
                 let isAdmins = false;
-                let isCreator = false;
-                
+
                 if (isGroup && groupMetadata) {
                     const participant = groupMetadata.participants.find(p => p.id === m.sender);
                     isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
-                    isCreator = participant?.admin === 'superadmin';
                 }
-                
+
+                // isCreator = the person who paired this bot to their WhatsApp number
+                // (or a number listed in OWNER_NUMBER), NOT a WhatsApp group admin.
+                // This must work the same in DMs and in groups.
+                const senderBase = jidToBase(m.sender);
+                const botBase = jidToBase(conn?.user?.id);
+                const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
+
+                // Private mode: only the owner can use the bot when it's off.
+                if (conn.public === false && !isCreator) {
+                    console.log(`🔒 Private mode active — ignoring "${commandName}" from ${sessionId}`);
+                    return;
+                }
+
     conn.ev.on('group-participants.update', async (update) => {
     console.log("🔥 group-participants.update fired:", update);
     await GroupEvents(conn, update);
@@ -646,7 +672,9 @@ async function handleMessage(conn, message, sessionId) {
                     groupMetadata: groupMetadata,
                     sender: message.key.participant || message.key.remoteJid,
                     isAdmins: isAdmins,
-                    isCreator: isCreator
+                    isCreator: isCreator,
+                    sessionId: sessionId,
+                    userPrefix: userPrefix
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
@@ -667,7 +695,18 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
     try {
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         const from = message.key.remoteJid;
-        
+
+        // Respect private mode for built-in commands too
+        if (conn.public === false) {
+            const senderBase = jidToBase(message.key.participant || message.key.remoteJid);
+            const botBase = jidToBase(conn?.user?.id);
+            const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
+            if (!isCreator) {
+                console.log(`🔒 Private mode active — ignoring built-in "${commandName}" from ${sessionId}`);
+                return true; // swallow the command, mimic "handled"
+            }
+        }
+
         // Handle newsletter/channel messages differently
         if (from.endsWith('@newsletter')) {
             console.log("📢 Processing command in newsletter/channel");
@@ -911,6 +950,9 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
     let isLoggedOut = false;
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 5; // Set to 5 as requested
+
+    // Restore this session's saved public/private mode (defaults to public)
+    conn.public = getBotMode(sessionId) !== 'private';
     
     // Handle connection updates
     conn.ev.on("connection.update", async (update) => {
