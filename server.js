@@ -14,6 +14,10 @@ const port = process.env.PORT || 3000;
 
 const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
+const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
+
+// Matches http(s) links, bare www. links, and WhatsApp group invite links
+const LINK_REGEX = /(https?:\/\/\S+)|(www\.\S+)|(chat\.whatsapp\.com\/\S+)/i;
 
 // Middleware
 app.use(express.json());
@@ -428,6 +432,83 @@ function getQuotedMessage(message) {
     };
 }
 
+// Checks a group message for links and enforces the group's antilink setting.
+// Returns true if the message was handled (deleted/actioned) and processing should stop.
+async function handleAntilink(conn, message, body) {
+    try {
+        if (!message.key || message.key.fromMe) return false;
+        const from = message.key.remoteJid;
+        if (!from || !from.endsWith('@g.us')) return false;
+        if (!body || !LINK_REGEX.test(body)) return false;
+
+        const mode = getSetting(from, "antilink");
+        if (!mode) return false; // antilink disabled for this group
+
+        const sender = message.key.participant || message.key.remoteJid;
+
+        // Exempt group admins/owner from antilink
+        try {
+            const metadata = await conn.groupMetadata(from);
+            const participant = metadata.participants.find(p => p.id === sender);
+            const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+            if (isAdmin) return false;
+        } catch (e) {
+            console.error("Antilink: failed to fetch group metadata:", e.message);
+        }
+
+        // Delete the offending message
+        try {
+            await conn.sendMessage(from, { delete: message.key });
+        } catch (e) {
+            console.error("Antilink: failed to delete message:", e.message);
+        }
+
+        if (mode === "delete") {
+            return true;
+        }
+
+        if (mode === "kick") {
+            try {
+                await conn.groupParticipantsUpdate(from, [sender], "remove");
+                await conn.sendMessage(from, {
+                    text: `🚫 @${sender.split('@')[0]} was removed for posting a link.`,
+                    mentions: [sender]
+                });
+            } catch (e) {
+                console.error("Antilink: failed to kick user:", e.message);
+            }
+            return true;
+        }
+
+        if (mode === "warn") {
+            const count = incrementWarn(from, sender);
+            if (count >= 3) {
+                resetWarn(from, sender);
+                try {
+                    await conn.groupParticipantsUpdate(from, [sender], "remove");
+                    await conn.sendMessage(from, {
+                        text: `🚫 @${sender.split('@')[0]} was removed after 3 link warnings.`,
+                        mentions: [sender]
+                    });
+                } catch (e) {
+                    console.error("Antilink: failed to kick user after warnings:", e.message);
+                }
+            } else {
+                await conn.sendMessage(from, {
+                    text: `⚠️ @${sender.split('@')[0]}, links are not allowed here. Warning ${count}/3.`,
+                    mentions: [sender]
+                });
+            }
+            return true;
+        }
+
+        return false;
+    } catch (error) {
+        console.error("Antilink enforcement error:", error);
+        return false;
+    }
+}
+
 // Handle incoming messages and execute commands
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -476,6 +557,11 @@ async function handleMessage(conn, message, sessionId) {
         // Get message type and text
         const messageType = getMessageType(message);
         let body = getMessageText(message, messageType);
+
+        // === Antilink enforcement (runs on every group message, not just commands) ===
+        if (await handleAntilink(conn, message, body)) {
+            return;
+        }
 
         // Get user-specific prefix or use default
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
