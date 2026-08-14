@@ -1,7 +1,5 @@
 // === commands/mode.js ===
-// Provides .mode (public/private), plus direct .public and .self shortcuts.
-// This writes to database/botmode.txt, which server.js reads on every message
-// to decide whether non-owner users are allowed to use the bot.
+// Provides .mode (public/private), plus direct .public, .private and .self shortcuts.
 
 const fs = require('fs');
 const path = require('path');
@@ -33,11 +31,9 @@ module.exports = {
 
         execute: async (conn, message, m, { isOwner, reply, args }) => {
             try {
-                if (!isOwner) return reply("❌ Owner only!");
-
                 if (!args[0]) {
                     const currentMode = readMode();
-                    return reply(`⚙️ *Bot Mode*\n\n📌 Current mode: *${currentMode.toUpperCase()}*\n\n📝 Usage:\n.mode public - Public mode (everyone can use)\n.mode private - Private mode (only owner can use)\n\nShortcuts: .public , .self`);
+                    return reply(`⚙️ *Bot Mode*\n\n📌 Current mode: *${currentMode.toUpperCase()}*\n\n📝 Usage:\n.mode public - Public mode (everyone can use)\n.mode private - Private mode (only owner can use)\n\nShortcuts: .public , .self , .private`);
                 }
 
                 const mode = args[0].toLowerCase();
@@ -65,13 +61,12 @@ module.exports = {
         pattern: "public",
         alias: [],
         desc: "Switch bot to public mode (everyone can use)",
-        category: "owner",
+        category: "main",
         filename: __filename,
         use: ".public",
 
-        execute: async (conn, message, m, { isOwner, reply }) => {
+        execute: async (conn, message, m, { reply }) => {
             try {
-                if (!isOwner) return reply("❌ Owner only!");
                 writeMode('public');
                 return reply("✅ *Public mode ON*\n\nEveryone can use the bot now.");
             } catch (err) {
@@ -83,15 +78,14 @@ module.exports = {
 
     self: {
         pattern: "self",
-        alias: [],
+        alias: ["private"],
         desc: "Switch bot to private/self mode (only owner can use)",
-        category: "owner",
+        category: "main",
         filename: __filename,
-        use: ".self",
+        use: ".self / .private",
 
-        execute: async (conn, message, m, { isOwner, reply }) => {
+        execute: async (conn, message, m, { reply }) => {
             try {
-                if (!isOwner) return reply("❌ Owner only!");
                 writeMode('private');
                 return reply("✅ *Private mode ON*\n\nOnly the bot owner can use the bot now.");
             } catch (err) {
