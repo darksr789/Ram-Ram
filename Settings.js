@@ -1,24 +1,31 @@
 // === Settings.js ===
-// Simple JSON-file-backed per-group settings store.
-// Used by the antilink command (and available for other group settings later).
+// Simple JSON-file-backed per-group settings store with in-memory caching.
 
 const fs = require("fs");
 const path = require("path");
 
 const FILE_PATH = path.join(__dirname, "group-settings.json");
 
+let cache = null; // In-memory cache for fast access
+
 function loadAll() {
+  if (cache !== null) return cache;
   try {
-    if (!fs.existsSync(FILE_PATH)) return {};
+    if (!fs.existsSync(FILE_PATH)) {
+      cache = {};
+      return cache;
+    }
     const raw = fs.readFileSync(FILE_PATH, "utf-8");
-    return raw ? JSON.parse(raw) : {};
+    cache = raw ? JSON.parse(raw) : {};
+    return cache;
   } catch (e) {
     console.error("Settings.js: failed to read group-settings.json:", e.message);
-    return {};
+    return cache || {};
   }
 }
 
 function saveAll(data) {
+  cache = data; // Update cache
   try {
     fs.writeFileSync(FILE_PATH, JSON.stringify(data, null, 2));
   } catch (e) {
@@ -28,9 +35,6 @@ function saveAll(data) {
 
 /**
  * Get a setting value for a group.
- * @param {string} groupId
- * @param {string} key
- * @returns {*} value or undefined
  */
 function getSetting(groupId, key) {
   const all = loadAll();
@@ -39,9 +43,6 @@ function getSetting(groupId, key) {
 
 /**
  * Set a setting value for a group.
- * @param {string} groupId
- * @param {string} key
- * @param {*} value
  */
 function setSetting(groupId, key, value) {
   const all = loadAll();
@@ -52,7 +53,6 @@ function setSetting(groupId, key, value) {
 
 /**
  * Increment the link-warning count for a user in a group.
- * Returns the new count.
  */
 function incrementWarn(groupId, userId) {
   const all = loadAll();
