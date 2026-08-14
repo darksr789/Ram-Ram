@@ -882,6 +882,28 @@ for (const [tag, cmds] of Object.entries(commandsByTag)) {
 return menuText;
 
 }
+// =====================================================
+// SEND CONNECTION MESSAGE WITH IMAGE
+// =====================================================
+async function sendConnectionMessage(conn) {
+    try {
+        const botNumber = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+        
+        await conn.sendMessage(botNumber, {
+            image: { url: 'https://i.imgur.com/your-image.jpg' },
+            caption: `*✨ SURYA-X BOT WAS SUCCESSFULLY CONNECTED ✅*\n\n` +
+                     `╔════════════════════════╗\n` +
+                     `║  🚀 STATUS: ONLINE    ║\n` +
+                     `╚════════════════════════╝`
+        });
+        
+        console.log('✅ Connection message sent with image!');
+        
+    } catch (error) {
+        console.error('❌ Error sending connection message:', error);
+    }
+}
+// =====================================================
 
 // Setup connection event handlers - FIXED VERSION
 function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
