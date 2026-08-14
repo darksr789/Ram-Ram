@@ -31,6 +31,7 @@ module.exports = {
 
 ╭━━〔 👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ 〕━━┈⊷
 ┃✮│➣ ${prefix}ᴘᴜʙʟɪᴄ
+┃✮│➣ ${prefix}ᴘʀɪᴠᴀᴛᴇ
 ┃✮│➣ ${prefix}sᴇʟꜰ
 ┃✮│➣ ${prefix}ʙʟᴏᴄᴋ
 ┃✮│➣ ${prefix}ᴜɴʙʟᴏᴄᴋ
