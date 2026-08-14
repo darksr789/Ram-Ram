@@ -122,7 +122,7 @@ let PREFIX = process.env.PREFIX || ".";
 const BOT_NAME = process.env.BOT_NAME || "SURYA X";
 const OWNER_NAME = process.env.OWNER_NAME || "DARK xSURYA";
 
-const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://up6.cc/2026/04/177631893622821.jpg";
+const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/c3267k.png";
 const REPO_LINK = process.env.REPO_LINK || "https://github.com";
 
 // Auto-status configuration
@@ -651,7 +651,7 @@ async function handleMessage(conn, message, sessionId) {
                 const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
 
                 // Private mode: only the owner can use the bot when it's off.
-                if (conn.public === false && !isCreator) {
+                if (conn.public === true && !isCreator) {
                     console.log(`🔒 Private mode active — ignoring "${commandName}" from ${sessionId}`);
                     return;
                 }
@@ -697,7 +697,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
         const from = message.key.remoteJid;
 
         // Respect private mode for built-in commands too
-        if (conn.public === false) {
+        if (conn.public === true) {
             const senderBase = jidToBase(message.key.participant || message.key.remoteJid);
             const botBase = jidToBase(conn?.user?.id);
             const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
