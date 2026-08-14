@@ -1,43 +1,63 @@
-const ytdl = require("ytdl-core");
-const ytSearch = require("yt-search");
+const yts = require('yt-search');
+const ytdl = require('@distube/ytdl-core');
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
-    pattern: "play",
-    desc: "Search and download audio from YouTube",
-    react: "🎧",
-    category: "music",
-    filename: __filename,
-
-    execute: async (conn, mek, m, { from, args, q, reply }) => {
+    pattern: 'song',
+    alias: ['play', 'sing'],
+    tags: ['download'],
+    execute: async (conn, message, m, { args, q, reply, from }) => {
         try {
-            const query = q || args.join(" ");
-            if (!query) {
-                return reply("❌ Please provide a song name or YouTube link.\n📌 Example: .play Bado Badi");
+            if (!q) {
+                return reply("🎵 *Please provide a song name or YouTube URL!*\n\n*Example:* `.song Indila`");
             }
 
-            const searchResults = await ytSearch(query);
-            if (!searchResults || searchResults.videos.length === 0) {
-                return reply("❌ No results found.");
+            await reply(`🔍 *Searching for:* **${q}** ...`);
+
+            // Search song on YouTube
+            const search = await yts(q);
+            const video = search.videos[0];
+
+            if (!video) {
+                return reply("❌ *No results found on YouTube!*");
             }
 
-            const video = searchResults.videos[0];
-            const videoUrl = video.url;
+            await reply(`🎶 *Downloading:* **${video.title}** ... Please wait.`);
 
-            const audioStream = ytdl(videoUrl, {
-                filter: "audioonly",
-                quality: "highestaudio"
+            // Temporary path for audio file
+            const filePath = path.join(__dirname, `../temp_${Date.now()}.mp3`);
+
+            // FIXED: Standard audio filter without invalid 'highestaudio' quality string
+            const stream = ytdl(video.url, { 
+                filter: 'audioonly' 
+            });
+            const fileStream = fs.createWriteStream(filePath);
+
+            stream.pipe(fileStream);
+
+            fileStream.on('finish', async () => {
+                // Send audio to WhatsApp chat
+                await conn.sendMessage(from, {
+                    audio: fs.readFileSync(filePath),
+                    mimetype: 'audio/mp4',
+                    fileName: `${video.title}.mp3`
+                }, { quoted: message });
+
+                // Clean up temporary file
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
             });
 
-            await conn.sendMessage(from, {
-                audio: { stream: audioStream },
-                mimetype: "audio/mpeg",
-                fileName: `${video.title.replace(/[^\w\s]/gi, '')}.mp3`,
-                caption: `🎵 *${video.title}*\n👤 *${video.author.name}*\n⏱️ *${video.duration.timestamp}*`
-            }, { quoted: mek });
+            stream.on('error', (err) => {
+                console.error("YTDL Error:", err);
+                reply("❌ *Failed to download audio from YouTube. Please try again later.*");
+            });
 
-        } catch (e) {
-            console.error("Play Command Error:", e);
-            reply(`⚠️ Error: ${e.message}`);
+        } catch (error) {
+            console.error("Song command error:", error);
+            reply("❌ *An error occurred while playing the song!*");
         }
     }
 };
