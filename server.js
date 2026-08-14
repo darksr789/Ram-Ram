@@ -89,10 +89,10 @@ io.on("connection", (socket) => {
 
 // Channel configuration
 const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split(',') : [
-    "120363425629935700@newsletter",
-    "120363425949353648@newsletter",
-    "120363404748661765@newsletter",
-    "120363408573182239@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
+    "120363419670264413@newsletter",
 
 ];
 
@@ -100,8 +100,8 @@ const CHANNEL_JIDS = process.env.CHANNEL_JIDS ? process.env.CHANNEL_JIDS.split('
 let PREFIX = process.env.PREFIX || ".";
 
 // Bot configuration from environment variables
-const BOT_NAME = process.env.BOT_NAME || "The TechX";
-const OWNER_NAME = process.env.OWNER_NAME || "SILVER xZAMAN";
+const BOT_NAME = process.env.BOT_NAME || "SURYA X";
+const OWNER_NAME = process.env.OWNER_NAME || "DARK xSURYA";
 
 const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://up6.cc/2026/04/177631893622821.jpg";
 const REPO_LINK = process.env.REPO_LINK || "https://github.com";
@@ -110,8 +110,8 @@ const REPO_LINK = process.env.REPO_LINK || "https://github.com";
 const AUTO_STATUS_SEEN = process.env.AUTO_STATUS_SEEN || "true";
 const AUTO_STATUS_REACT = process.env.AUTO_STATUS_REACT || "true";
 const AUTO_STATUS_REPLY = process.env.AUTO_STATUS_REPLY || "false";
-const AUTO_STATUS_MSG = process.env.AUTO_STATUS_MSG || "YOUR STATUS HAS BEEN SEEN BY 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓🫶🏻";
-const DEV = process.env.DEV || 'SILVERxZAMAN';
+const AUTO_STATUS_MSG = process.env.AUTO_STATUS_MSG || "YOUR STATUS HAS BEEN SEEN BY SURYA X🫶🏻";
+const DEV = process.env.DEV || 'DARK SURYA';
 
 // Track login state globally
 let isUserLoggedIn = false;
@@ -440,7 +440,7 @@ async function handleMessage(conn, message, sessionId) {
             if (AUTO_STATUS_REACT === "true") {
                 // Get bot's JID directly from the connection object
                 const botJid = conn.user.id;
-                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
+                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇮🇳', '💜', '💙', '🌝', '🖤', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 await conn.sendMessage(message.key.remoteJid, {
                     react: {
@@ -676,7 +676,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                     text: details,
                     contextInfo: {
                         externalAdReply: {
-                            title: "⚡ 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 Speed Test",
+                            title: "⚡ SURYA-X Speed Test",
                             body: `${BOT_NAME} Performance Check`,
                             thumbnailUrl: MENU_IMAGE_URL,
                             mediaType: 1,
@@ -714,12 +714,12 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                     forwardingScore: 999,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
-                        newsletterJid: "120363425629935700@newsletter",
-                        newsletterName: "𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓",
+                        newsletterJid: "120363419670264413@newsletter",
+                        newsletterName: "ֆʊʀʏǟӼ",
                         serverMessageId: 200
                     },
                         externalAdReply: {
-                            title: "📃 𝙏𝙝𝙚 𝙏𝙚𝙘𝙝𝙓 Command Menu",
+                            title: "📃 SURYA-X Command Menu",
                             body: `${BOT_NAME} - All Available Commands`,
                             thumbnailUrl: MENU_IMAGE_URL,
                             mediaType: 1,
@@ -996,7 +996,7 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
     });
     // ========== NEWSLETTER AUTO-REACT ==========
 const NEWSLETTER_JIDS = [
-    "120363420639555414@newsletter",
+    "120363419670264413@newsletter",
 ];
 
 const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
