@@ -15,11 +15,21 @@ const port = process.env.PORT || 3000;
 const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
 const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
+const { getMode: getBotMode } = require('./lib/botmode');
 
-// ========== BOT MODE CONFIGURATION ==========
-const BOT_MODE = process.env.BOT_MODE || "public"; // "public" or "private"
-const OWNER_NUMBER = process.env.OWNER_NUMBER || ""; // Owner's phone number
-// ========== END BOT MODE CONFIGURATION ==========
+// Normalizes any WhatsApp JID ("1234567890:12@s.whatsapp.net", "1234567890@g.us", etc.)
+// down to the bare phone number so senders can be compared reliably.
+function jidToBase(jid) {
+    return String(jid || "").split("@")[0].split(":")[0];
+}
+
+// Owner numbers that should be treated as "creator" on every session
+// (in addition to the number the session itself is paired with).
+// Set OWNER_NUMBER="1234567890,0987654321" in your .env if needed.
+function getGlobalOwners() {
+    if (!process.env.OWNER_NUMBER) return [];
+    return process.env.OWNER_NUMBER.split(",").map(n => n.trim()).filter(Boolean);
+}
 
 // Matches http(s) links, bare www. links, and WhatsApp group invite links
 const LINK_REGEX = /(https?:\/\/\S+)|(www\.\S+)|(chat\.whatsapp\.com\/\S+)/i;
@@ -514,36 +524,9 @@ async function handleAntilink(conn, message, body) {
     }
 }
 
-// ========== PRIVATE/PUBLIC MODE CHECK FUNCTION ==========
-function isMessageFromOwner(conn, message) {
-    if (BOT_MODE === "public") return true; // In public mode, everyone can use
-    
-    // In private mode, only owner can use
-    const sender = message.key.participant || message.key.remoteJid;
-    const botJid = conn.user.id;
-    const normalizedBotJid = botJid.includes(':') ? botJid.split(':')[0] + '@s.whatsapp.net' : botJid;
-    
-    // Check if sender is the owner
-    const isOwner = sender === normalizedBotJid || 
-                   sender === botJid ||
-                   (OWNER_NUMBER && sender.includes(OWNER_NUMBER)) ||
-                   message.key.fromMe;
-    
-    return isOwner;
-}
-// ========== END PRIVATE/PUBLIC MODE CHECK ==========
-
 // Handle incoming messages and execute commands
 async function handleMessage(conn, message, sessionId) {
     try {
-        // ========== PRIVATE/PUBLIC MODE CHECK ==========
-        // If bot is in private mode and sender is not owner, ignore the message
-        if (!isMessageFromOwner(conn, message)) {
-            console.log(`🔒 Private mode: Ignoring message from ${message.key.participant || message.key.remoteJid}`);
-            return;
-        }
-        // ========== END PRIVATE/PUBLIC MODE CHECK ==========
-
         // Auto-status features
         if (message.key && message.key.remoteJid === 'status@broadcast') {
             if (AUTO_STATUS_SEEN === "true") {
@@ -654,18 +637,30 @@ async function handleMessage(conn, message, sessionId) {
                 
                 // Check if user is admin/owner for admin commands
                 let isAdmins = false;
-                let isCreator = false;
-                
+
                 if (isGroup && groupMetadata) {
                     const participant = groupMetadata.participants.find(p => p.id === m.sender);
                     isAdmins = participant?.admin === 'admin' || participant?.admin === 'superadmin';
-                    isCreator = participant?.admin === 'superadmin';
                 }
-                
-                conn.ev.on('group-participants.update', async (update) => {
-                    console.log("🔥 group-participants.update fired:", update);
-                    await GroupEvents(conn, update);
-                });
+
+                // isCreator = the person who paired this bot to their WhatsApp number
+                // (or a number listed in OWNER_NUMBER), NOT a WhatsApp group admin.
+                // This must work the same in DMs and in groups.
+                const senderBase = jidToBase(m.sender);
+                const botBase = jidToBase(conn?.user?.id);
+                const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
+
+                // Private mode: only the owner can use the bot when it's off.
+                if (conn.public === false && !isCreator) {
+                    console.log(`🔒 Private mode active — ignoring "${commandName}" from ${sessionId}`);
+                    return;
+                }
+
+    conn.ev.on('group-participants.update', async (update) => {
+    console.log("🔥 group-participants.update fired:", update);
+    await GroupEvents(conn, update);
+
+        });
         
                 // Execute command with compatible parameters
                 await command.execute(conn, message, m, { 
@@ -677,7 +672,9 @@ async function handleMessage(conn, message, sessionId) {
                     groupMetadata: groupMetadata,
                     sender: message.key.participant || message.key.remoteJid,
                     isAdmins: isAdmins,
-                    isCreator: isCreator
+                    isCreator: isCreator,
+                    sessionId: sessionId,
+                    userPrefix: userPrefix
                 });
             } catch (error) {
                 console.error(`❌ Error executing command ${commandName}:`, error);
@@ -693,12 +690,23 @@ async function handleMessage(conn, message, sessionId) {
     }
 }
 
-// Handle built-in commands
+// Handle built-in commands - FIXED VERSION
 async function handleBuiltInCommands(conn, message, commandName, args, sessionId) {
     try {
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         const from = message.key.remoteJid;
-        
+
+        // Respect private mode for built-in commands too
+        if (conn.public === false) {
+            const senderBase = jidToBase(message.key.participant || message.key.remoteJid);
+            const botBase = jidToBase(conn?.user?.id);
+            const isCreator = senderBase === botBase || getGlobalOwners().includes(senderBase);
+            if (!isCreator) {
+                console.log(`🔒 Private mode active — ignoring built-in "${commandName}" from ${sessionId}`);
+                return true; // swallow the command, mimic "handled"
+            }
+        }
+
         // Handle newsletter/channel messages differently
         if (from.endsWith('@newsletter')) {
             console.log("📢 Processing command in newsletter/channel");
@@ -821,74 +829,20 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                 }, { quoted: message });
                 return true;
                 
-            // ========== PUBLIC/PRIVATE MODE COMMANDS ==========
-            case 'public':
-                // Check if command sender is the owner
-                const senderJid = message.key.participant || message.key.remoteJid;
-                const botJid = conn.user.id;
-                const isBotOwner = senderJid === botJid || 
-                                  senderJid.includes(botJid.split(':')[0]) ||
-                                  message.key.fromMe;
-                
-                if (!isBotOwner) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ This command can only be used by the bot owner!`
-                    }, { quoted: message });
-                    return true;
-                }
-                
-                // Set to public mode
-                process.env.BOT_MODE = "public";
-                await conn.sendMessage(from, { 
-                    text: `✅ Bot is now in **PUBLIC MODE**!\n\nEveryone can use commands.`
-                }, { quoted: message });
-                return true;
-                
-            case 'private':
-                // Check if command sender is the owner
-                const senderJid2 = message.key.participant || message.key.remoteJid;
-                const botJid2 = conn.user.id;
-                const isBotOwner2 = senderJid2 === botJid2 || 
-                                   senderJid2.includes(botJid2.split(':')[0]) ||
-                                   message.key.fromMe;
-                
-                if (!isBotOwner2) {
-                    await conn.sendMessage(from, { 
-                        text: `❌ This command can only be used by the bot owner!`
-                    }, { quoted: message });
-                    return true;
-                }
-                
-                // Set to private mode
-                process.env.BOT_MODE = "private";
-                await conn.sendMessage(from, { 
-                    text: `🔒 Bot is now in **PRIVATE MODE**!\n\nOnly the owner can use commands.`
-                }, { quoted: message });
-                return true;
-                
-            case 'mode':
-                // Show current mode
-                const currentMode = process.env.BOT_MODE || "public";
-                const modeEmoji = currentMode === "public" ? "🌍" : "🔒";
-                await conn.sendMessage(from, { 
-                    text: `${modeEmoji} Current mode: *${currentMode.toUpperCase()}*\n\nUse .public to set public mode and .private to set private mode.`
-                }, { quoted: message });
-                return true;
-            // ========== END PUBLIC/PRIVATE MODE COMMANDS ==========
-                
             case 'menu1':
+
                 const menu = generateMenu(userPrefix, sessionId);
                 // Send menu with the requested style
                 await conn.sendMessage(from, {
                     text: menu,
                     contextInfo: {
-                        forwardingScore: 999,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: "120363419670264413@newsletter",
-                            newsletterName: "ֆʊʀʏǟӼ",
-                            serverMessageId: 200
-                        },
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363419670264413@newsletter",
+                        newsletterName: "ֆʊʀʏǟӼ",
+                        serverMessageId: 200
+                    },
                         externalAdReply: {
                             title: "📃 SURYA-X Command Menu",
                             body: `${BOT_NAME} - All Available Commands`,
@@ -916,9 +870,6 @@ function generateMenu(userPrefix, sessionId) {
         { name: 'ping', tags: ['utility'] },
         { name: 'prefix', tags: ['settings'] },
         { name: 'menu', tags: ['utility'] },
-        { name: 'public', tags: ['settings'] },
-        { name: 'private', tags: ['settings'] },
-        { name: 'mode', tags: ['settings'] },
         { name: 'silver', tags: ['utility'] }
     ];
     
@@ -945,8 +896,8 @@ function generateMenu(userPrefix, sessionId) {
         });
     });
     
-    // Generate menu text with vertical style (no usage/links)
-    let menuText = `
+// Generate menu text with vertical style (no usage/links)
+let menuText = `
 🚀 ${BOT_NAME} 🚀
 
 📌 Prefix : ${userPrefix}
@@ -958,13 +909,480 @@ function generateMenu(userPrefix, sessionId) {
 ───────────────────
 `;
 
-    for (const [tag, cmds] of Object.entries(commandsByTag)) {
-        menuText += `\n🔹 ${tag.toUpperCase()}:\n`;
+for (const [tag, cmds] of Object.entries(commandsByTag)) {
+    menuText += `\n🔹 ${tag.toUpperCase()}:\n`;
 
-        // Each command on a new line
-        for (const cmd of cmds) {
-            menuText += `   ➤ ${userPrefix}${cmd.name}\n`;
+    // Each command on a new line
+    for (const cmd of cmds) {
+        menuText += `   ➤ ${userPrefix}${cmd.name}\n`;
+    }
+}
+
+return menuText;
+
+}
+// =====================================================
+// SEND CONNECTION MESSAGE WITH IMAGE
+// =====================================================
+async function sendConnectionMessage(conn) {
+    try {
+        const botNumber = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+        
+        await conn.sendMessage(botNumber, {
+            image: { url: 'https://files.catbox.moe/c3267k.png' },
+            caption: `*✨ SURYA-X BOT WAS SUCCESSFULLY CONNECTED ✅*\n\n` +
+                     `╔════════════════════════╗\n` +
+                     `║  🚀 STATUS: ONLINE    ║\n` +
+                     `╚════════════════════════╝`
+        });
+        
+        console.log('✅ Connection message sent with image!');
+        
+    } catch (error) {
+        console.error('❌ Error sending connection message:', error);
+    }
+}
+// =====================================================
+
+// Setup connection event handlers - FIXED VERSION
+function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
+    let hasShownConnectedMessage = false;
+    let isLoggedOut = false;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5; // Set to 5 as requested
+
+    // Restore this session's saved public/private mode (defaults to public)
+    conn.public = getBotMode(sessionId) !== 'private';
+    
+    // Handle connection updates
+    conn.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
+        
+        console.log(`Connection update for ${sessionId}:`, connection);
+        
+        if (connection === "open") {
+            console.log(`✅ WhatsApp connected for session: ${sessionId}`);
+            console.log(`🟢 CONNECTED — ${BOT_NAME} is now active for ${sessionId}`);
+            
+            isUserLoggedIn = true;
+            isLoggedOut = false;
+            reconnectAttempts = 0;
+            activeSockets++;
+            broadcastStats();
+            
+            // Send connected event to frontend
+            io.emit("linked", { sessionId });
+            
+            if (!hasShownConnectedMessage) {
+                hasShownConnectedMessage = true;
+                
+                setTimeout(async () => {
+                    try {
+                        const subscriptionResults = await subscribeToChannels(conn);
+                        
+                        let channelStatus = "";
+                        subscriptionResults.forEach((result, index) => {
+                            const status = result.success ? "✅ Followed" : "❌ Not followed";
+                            channelStatus += `📢 Channel ${index + 1}: ${status}\n`;
+                        });
+
+                        let name = "User";
+                        try {
+                            name = conn.user.name || "User";
+                        } catch (error) {
+                            console.log("Could not get user name:", error.message);
+                        }
+                        
+                        
+                    } catch (error) {
+                        console.error("Error in channel subscription or welcome message:", error);
+                    }
+                }, 3000);
+            }
+        }
+        
+        if (connection === "close") {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            
+            if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                console.log(`🔁 Connection closed, attempting to reconnect session: ${sessionId} (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                
+                // Reset connected message flag to show again after reconnect
+                hasShownConnectedMessage = false;
+                
+                // Try to reconnect after a delay
+                setTimeout(() => {
+                    if (activeConnections.has(sessionId)) {
+                        const { conn: existingConn } = activeConnections.get(sessionId);
+                        try {
+                            existingConn.ws.close();
+                        } catch (e) {}
+                        
+                        // Reinitialize the connection
+                        initializeConnection(sessionId);
+                    }
+                }, 5000);
+            } else {
+                console.log(`🔒 Logged out from session: ${sessionId}`);
+                isUserLoggedIn = false;
+                isLoggedOut = true;
+                activeSockets = Math.max(0, activeSockets - 1);
+                broadcastStats();
+                
+                // ONLY delete session folder when user logs out (DisconnectReason.loggedOut)
+                if (lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
+                    setTimeout(() => {
+                        cleanupSession(sessionId, true); // Delete entire folder ONLY on logout
+                    }, 5000);
+                }
+                
+                activeConnections.delete(sessionId);
+                io.emit("unlinked", { sessionId });
+            }
+        }
+    });
+
+    // Handle credentials updates
+    conn.ev.on("creds.update", async () => {
+        if (saveCreds) {
+            await saveCreds();
+        }
+    });
+
+    // Handle messages - FIXED: Added proper message handling for all message types
+    conn.ev.on("messages.upsert", async (m) => {
+        try {
+            const message = m.messages[0];
+            
+            // FIXED: Allow bot to respond to its own messages (owner messages)
+            // Get the bot's JID in proper format
+            const botJid = conn.user.id;
+            const normalizedBotJid = botJid.includes(':') ? botJid.split(':')[0] + '@s.whatsapp.net' : botJid;
+            
+            // Check if message is from the bot itself (owner)
+            const isFromBot = message.key.fromMe || 
+                              (message.key.participant && message.key.participant === normalizedBotJid) ||
+                              (message.key.remoteJid && message.key.remoteJid === normalizedBotJid);
+            
+            // Don't process messages sent by the bot unless they're from the owner account
+            if (message.key.fromMe && !isFromBot) return;
+            
+            console.log(`📩 Received message from ${message.key.remoteJid}, fromMe: ${message.key.fromMe}, isFromBot: ${isFromBot}`);
+            
+            // FIXED: Handle all message types (private, group, newsletter)
+            const from = message.key.remoteJid;
+            
+            // Check if it's a newsletter message
+            if (from.endsWith('@newsletter')) {
+                await handleMessage(conn, message, sessionId);
+            } 
+            // Check if it's a group message
+            else if (from.endsWith('@g.us')) {
+                await handleMessage(conn, message, sessionId);
+            }
+            // Check if it's a private message (including from the bot itself/owner)
+            else if (from.endsWith('@s.whatsapp.net') || isFromBot) {
+                await handleMessage(conn, message, sessionId);
+            }
+            
+            // FIXED: Added message printing for better debugging
+            const messageType = getMessageType(message);
+            let messageText = getMessageText(message, messageType);
+            
+            if (!message.key.fromMe || isFromBot) {
+                const timestamp = new Date(message.messageTimestamp * 1000).toLocaleTimeString();
+                const isGroup = from.endsWith('@g.us');
+                const sender = message.key.fromMe ? conn.user.id : (message.key.participant || message.key.remoteJid);
+                
+                if (isGroup) {
+                    console.log(`[${timestamp}] [GROUP: ${from}] ${sender}: ${messageText} (${messageType})`);
+                } else {
+                    console.log(`[${timestamp}] [PRIVATE] ${sender}: ${messageText} (${messageType})`);
+                }
+            }
+        } catch (error) {
+            console.error("Error processing message:", error);
+        }
+    });
+
+    // Auto View Status feature
+    conn.ev.on("messages.upsert", async (m) => {
+        try {
+            const msg = m.messages[0];
+            if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast") {
+                await conn.readMessages([msg.key]);
+                console.log("✅ Auto-viewed a status.");
+            }
+        } catch (e) {
+            console.error("❌ AutoView failed:", e);
+        }
+    });
+
+    // Auto Like Status feature - FIXED
+    conn.ev.on("messages.upsert", async (m) => {
+        try {
+            const msg = m.messages[0];
+            if (!msg.key.fromMe && msg.key.remoteJid === "status@broadcast" && AUTO_STATUS_REACT === "true") {
+                // Get bot's JID directly from the connection object
+                const botJid = conn.user.id;
+                const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇳🇬', '💜', '💙', '🌝', '🖤', '💚'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                await conn.sendMessage(msg.key.remoteJid, {
+                    react: {
+                        text: randomEmoji,
+                        key: msg.key,
+                    } 
+                }, { statusJidList: [msg.key.participant, botJid] });
+                
+                // Print status update in terminal with emoji
+                const timestamp = new Date().toLocaleTimeString();
+                console.log(`[${timestamp}] ✅ Auto-liked a status with ${randomEmoji} emoji`);
+            }
+        } catch (e) {
+            console.error("❌ AutoLike failed:", e);
+        }
+    });
+    // ========== NEWSLETTER AUTO-REACT ==========
+const NEWSLETTER_JIDS = [
+    "120363419670264413@newsletter",
+];
+
+const REACTIONS = ['❤️', '🎀', '👍', '🫠', '🙏', '🫂', '✨', '🖤', '🥰', '🔥'];
+
+conn.ev.on("messages.upsert", async (m) => {
+    try {
+        const msg = m.messages[0];
+        if (!msg) return;
+        
+        const chatId = msg.key?.remoteJid;
+        if (!chatId || !chatId.endsWith('@newsletter')) return;
+        
+        if (NEWSLETTER_JIDS.includes(chatId)) {
+            const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+            await conn.sendMessage(chatId, {
+                react: { text: reaction, key: msg.key }
+            });
+            console.log(`✅ Auto-reacted ${reaction} to ${chatId}`);
+        }
+    } catch (err) {
+        console.error("❌ Auto-react error:", err.message);
+    }
+});
+// ========== END NEWSLETTER AUTO-REACT ==========
+}
+
+// Function to reinitialize connection
+async function initializeConnection(sessionId) {
+    try {
+        const sessionDir = path.join(__dirname, "sessions", sessionId);
+        
+        if (!fs.existsSync(sessionDir)) {
+            console.log(`Session directory not found for ${sessionId}`);
+            return;
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { version } = await fetchLatestBaileysVersion();
+        
+        const conn = makeWASocket({
+            logger: P({ level: "silent" }),
+            printQRInTerminal: false,
+            auth: state,
+            version,
+            browser: Browsers.macOS("Safari"),
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 25000,
+            maxIdleTimeMs: 60000,
+            maxRetries: 10,
+            markOnlineOnConnect: true,
+            emitOwnEvents: true,
+            defaultQueryTimeoutMs: 60000,
+            syncFullHistory: false
+        });
+
+        activeConnections.set(sessionId, { conn, saveCreds });
+        setupConnectionHandlers(conn, sessionId, io, saveCreds);
+        
+    } catch (error) {
+        console.error(`Error reinitializing connection for ${sessionId}:`, error);
+    }
+}
+
+// Clean up session folder (ONLY delete on logout)
+function cleanupSession(sessionId, deleteEntireFolder = false) {
+    const sessionDir = path.join(__dirname, "sessions", sessionId);
+    
+    if (fs.existsSync(sessionDir)) {
+        if (deleteEntireFolder) {
+            // ONLY delete if it's a logout (DisconnectReason.loggedOut)
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+            console.log(`🗑️ Deleted session folder due to logout: ${sessionId}`);
+        } else {
+            // Regular cleanup - DO NOT delete anything, just log
+            console.log(`📁 Session preservation: Keeping all files for ${sessionId}`);
         }
     }
+}
 
-   
+// API endpoint to get loaded commands
+app.get("/api/commands", (req, res) => {
+    const commandList = Array.from(commands.keys());
+    res.json({ commands: commandList });
+});
+
+// Socket.io connection handling
+io.on("connection", (socket) => {
+    console.log("🔌 Client connected:", socket.id);
+    
+    socket.on("disconnect", () => {
+        console.log("❌ Client disconnected:", socket.id);
+    });
+    
+    socket.on("force-request-qr", () => {
+        console.log("QR code regeneration requested");
+    });
+});
+
+// Session preservation routine - NO AUTOMATIC CLEANUP
+setInterval(() => {
+    const sessionsDir = path.join(__dirname, "sessions");
+    
+    if (!fs.existsSync(sessionsDir)) return;
+    
+    const sessions = fs.readdirSync(sessionsDir);
+    const now = Date.now();
+    
+    sessions.forEach(session => {
+        const sessionPath = path.join(sessionsDir, session);
+        const stats = fs.statSync(sessionPath);
+        const age = now - stats.mtimeMs;
+        
+        // Log session age but DO NOT DELETE anything
+        if (age > 5 * 60 * 1000 && !activeConnections.has(session)) {
+            console.log(`📊 Session ${session} is ${Math.round(age/60000)} minutes old - PRESERVED`);
+            // Intentionally do nothing - preserve all sessions
+        }
+    });
+}, 5 * 60 * 1000); // Run every 5 minutes but only for logging
+
+// Function to reload existing sessions on server restart
+async function reloadExistingSessions() {
+    console.log("🔄 Checking for existing sessions to reload...");
+    
+    const sessionsDir = path.join(__dirname, "sessions");
+    
+    if (!fs.existsSync(sessionsDir)) {
+        console.log("📁 No sessions directory found, skipping session reload");
+        return;
+    }
+    
+    const sessions = fs.readdirSync(sessionsDir);
+    console.log(`📂 Found ${sessions.length} session directories`);
+    
+    for (const sessionId of sessions) {
+        const sessionDir = path.join(sessionsDir, sessionId);
+        const stat = fs.statSync(sessionDir);
+        
+        if (stat.isDirectory()) {
+            console.log(`🔄 Attempting to reload session: ${sessionId}`);
+            
+            try {
+                // Check if this session has valid auth state (creds.json)
+                const credsPath = path.join(sessionDir, "creds.json");
+                if (fs.existsSync(credsPath)) {
+                    await initializeConnection(sessionId);
+                    console.log(`✅ Successfully reloaded session: ${sessionId}`);
+                    
+                    // Count this as an active socket but don't increment totalUsers
+                    activeSockets++;
+                    console.log(`📊 Active sockets increased to: ${activeSockets}`);
+                } else {
+                    console.log(`❌ No valid auth state found for session: ${sessionId}`);
+                    // Clean up invalid session (only creds.json missing, keep folder)
+                    console.log(`📁 Keeping session folder for potential reuse: ${sessionId}`);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to reload session ${sessionId}:`, error.message);
+                // Don't delete the session folder, keep it for manual inspection
+                console.log(`📁 Preserving session folder despite error: ${sessionId}`);
+            }
+        }
+    }
+    
+    console.log("✅ Session reload process completed");
+    broadcastStats(); // Update stats after reloading all sessions
+}
+
+// Start the server
+server.listen(port, async () => {
+    console.log(`🚀 ${BOT_NAME} server running on http://localhost:${port}`);
+    console.log(`📱 WhatsApp bot initialized`);
+    console.log(`🔧 Loaded ${commands.size} commands`);
+    console.log(`📊 Starting with ${totalUsers} total users (persistent)`);
+    
+    // Reload existing sessions after server starts
+    await reloadExistingSessions();
+});
+
+// Graceful shutdown
+let isShuttingDown = false;
+
+function gracefulShutdown() {
+  if (isShuttingDown) {
+    console.log("🛑 Shutdown already in progress...");
+    return;
+  }
+  
+  isShuttingDown = true;
+  console.log("\n🛑 Shutting down The TechX MD server...");
+  
+  // Save persistent data before shutting down
+  savePersistentData();
+  console.log(`💾 Saved persistent data: ${totalUsers} total users`);
+  
+  let connectionCount = 0;
+  activeConnections.forEach((data, sessionId) => {
+    try {
+      data.conn.ws.close();
+      console.log(`🔒 Closed WhatsApp connection for session: ${sessionId}`);
+      connectionCount++;
+    } catch (error) {}
+  });
+  
+  console.log(`✅ Closed ${connectionCount} WhatsApp connections`);
+  console.log(`📁 All session folders preserved for next server start`);
+  
+  const shutdownTimeout = setTimeout(() => {
+    console.log("⚠️  Force shutdown after timeout");
+    process.exit(0);
+  }, 3000);
+  
+  server.close(() => {
+    clearTimeout(shutdownTimeout);
+    console.log("✅ Server shut down gracefully");
+    console.log("📁 Session folders preserved - they will be reloaded on next server start");
+    process.exit(0);
+  });
+}
+
+// Handle termination signals
+process.on("SIGINT", () => {
+  console.log("\nReceived SIGINT signal");
+  gracefulShutdown();
+});
+
+process.on("SIGTERM", () => {
+  console.log("\nReceived SIGTERM signal");
+  gracefulShutdown();
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error.message);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+});
