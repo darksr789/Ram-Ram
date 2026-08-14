@@ -654,13 +654,29 @@ function setupConnectionHandlers(conn, sessionId, io, saveCreds) {
     conn.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
         
-        if (connection === "open") {
+                if (connection === "open") {
             console.log(`✅ WhatsApp connected for session: ${sessionId}`);
             isUserLoggedIn = true;
             activeSockets++;
             broadcastStats();
             io.emit("linked", { sessionId });
+
+            // === Send Welcome Image Message on Connection ===
+            try {
+                const userJid = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+
+                const captionText = `SURYA-X WAS SUCCESSFULLY CONNECTED ✅\n\n│ .menu to show command ❤️‍🩹`;
+
+                await conn.sendMessage(userJid, {
+                    image: { url: MENU_IMAGE_URL },
+                    caption: captionText
+                });
+
+            } catch (err) {
+                console.error("Failed to send connection message:", err.message);
+            }
         }
+
         
         if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
