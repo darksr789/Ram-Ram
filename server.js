@@ -890,7 +890,7 @@ async function sendConnectionMessage(conn) {
         const botNumber = conn.user.id.split(':')[0] + '@s.whatsapp.net';
         
         await conn.sendMessage(botNumber, {
-            image: { url: 'https://i.imgur.com/your-image.jpg' },
+            image: { url: 'https://files.catbox.moe/c3267k.png' },
             caption: `*✨ SURYA-X BOT WAS SUCCESSFULLY CONNECTED ✅*\n\n` +
                      `╔════════════════════════╗\n` +
                      `║  🚀 STATUS: ONLINE    ║\n` +
