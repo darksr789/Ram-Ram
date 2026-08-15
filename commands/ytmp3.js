@@ -4,6 +4,26 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+// Optional: to fix YouTube's "Sign in to confirm you're not a bot" error,
+// export your YouTube cookies (while logged into a real account) as JSON
+// using a browser extension like "Get cookies.txt LOCALLY", and save the
+// array to config/youtube_cookies.json. If present, we use it to build an
+// authenticated agent; if not, downloads still work most of the time but
+// may occasionally hit this bot-check error.
+const COOKIES_PATH = path.join(__dirname, "..", "config", "youtube_cookies.json");
+let ytdlAgent = null;
+try {
+    if (fs.existsSync(COOKIES_PATH)) {
+        const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, "utf-8"));
+        if (Array.isArray(cookies) && cookies.length > 0) {
+            ytdlAgent = ytdl.createAgent(cookies);
+            console.log("🎵 ytmp3: loaded YouTube cookies for authenticated requests");
+        }
+    }
+} catch (err) {
+    console.error("🎵 ytmp3: failed to load youtube_cookies.json:", err.message);
+}
+
 module.exports = {
     pattern: "play",
     alias: ["song"],
@@ -58,7 +78,7 @@ module.exports = {
             if (isYoutubeUrl) {
                 videoUrl = query;
                 try {
-                    const info = await ytdl.getBasicInfo(videoUrl);
+                    const info = await ytdl.getBasicInfo(videoUrl, ytdlAgent ? { agent: ytdlAgent } : {});
                     videoTitle = info.videoDetails.title;
                     videoDuration = Number(info.videoDetails.lengthSeconds);
                     videoThumbnail = info.videoDetails.thumbnails?.pop()?.url;
@@ -105,6 +125,7 @@ module.exports = {
                 const stream = ytdl(videoUrl, {
                     filter: "audioonly",
                     quality: "highestaudio",
+                    ...(ytdlAgent ? { agent: ytdlAgent } : {}),
                     requestOptions: {
                         headers: {
                             // A normal browser UA reduces (does not fully stop) 429s from YouTube
@@ -129,6 +150,7 @@ module.exports = {
             });
 
             const is429 = (err) => /429|too many requests/i.test(err?.message || "");
+            const isBotCheck = (err) => /sign in to confirm|not a bot/i.test(err?.message || "");
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
             let lastErr = null;
@@ -145,13 +167,18 @@ module.exports = {
                         await sleep(4000 * attempt); // backoff: 4s, 8s
                         continue;
                     }
-                    break; // non-429 error, or out of attempts
+                    break; // non-429 error, bot-check error, or out of attempts
                 }
             }
 
             if (lastErr) {
                 if (is429(lastErr)) {
                     throw new Error("YouTube is rate-limiting this server right now (Status code: 429). This is temporary — please wait a few minutes and try again.");
+                }
+                if (isBotCheck(lastErr)) {
+                    throw new Error(ytdlAgent
+                        ? "YouTube blocked this download even with cookies (Sign in to confirm you're not a bot). Your saved cookies may have expired — please re-export them."
+                        : "YouTube is blocking this download (Sign in to confirm you're not a bot). This needs YouTube account cookies to fix — ask the bot admin to add config/youtube_cookies.json.");
                 }
                 throw lastErr;
             }
