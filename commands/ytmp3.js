@@ -96,13 +96,21 @@ module.exports = {
 
             await sendMessageWithContext(`🎶 Downloading: *${videoTitle || "audio"}* ... Please wait.`);
 
-            // Download audio-only stream to a temp file
+            // Download audio-only stream to a temp file, with a couple of
+            // retries since YouTube's 429 (Too Many Requests) is often
+            // temporary/IP based and clears up after a short pause.
             tempFilePath = path.join(os.tmpdir(), `song_${Date.now()}.m4a`);
 
-            await new Promise((resolve, reject) => {
+            const downloadOnce = () => new Promise((resolve, reject) => {
                 const stream = ytdl(videoUrl, {
                     filter: "audioonly",
                     quality: "highestaudio",
+                    requestOptions: {
+                        headers: {
+                            // A normal browser UA reduces (does not fully stop) 429s from YouTube
+                            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                        }
+                    }
                 });
 
                 const writeStream = fs.createWriteStream(tempFilePath);
@@ -119,6 +127,34 @@ module.exports = {
 
                 stream.pipe(writeStream);
             });
+
+            const is429 = (err) => /429|too many requests/i.test(err?.message || "");
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            let lastErr = null;
+            const MAX_ATTEMPTS = 3;
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                try {
+                    lastErr = null;
+                    await downloadOnce();
+                    break; // success
+                } catch (err) {
+                    lastErr = err;
+                    if (is429(err) && attempt < MAX_ATTEMPTS) {
+                        console.log(`🎵 Got 429, retrying (${attempt}/${MAX_ATTEMPTS - 1})...`);
+                        await sleep(4000 * attempt); // backoff: 4s, 8s
+                        continue;
+                    }
+                    break; // non-429 error, or out of attempts
+                }
+            }
+
+            if (lastErr) {
+                if (is429(lastErr)) {
+                    throw new Error("YouTube is rate-limiting this server right now (Status code: 429). This is temporary — please wait a few minutes and try again.");
+                }
+                throw lastErr;
+            }
 
             let thumbBuffer;
             if (videoThumbnail) {
