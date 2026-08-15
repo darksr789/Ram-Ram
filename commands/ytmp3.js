@@ -88,7 +88,6 @@ module.exports = {
                     return await sendMessageWithContext("❌ Couldn't read that YouTube link. It may be private, age-restricted, or invalid.");
                 }
             } else {
-                await sendMessageWithContext(`🔎 Searching for: *${query}* ...`);
                 let searchResult;
                 try {
                     searchResult = await ytSearch(query);
@@ -114,7 +113,35 @@ module.exports = {
                 return await sendMessageWithContext("❌ That track is too long (over 20 minutes). Please try a shorter one.");
             }
 
-            await sendMessageWithContext(`🎶 Downloading: *${videoTitle || "audio"}* ... Please wait.`);
+            const durationText = videoDuration
+                ? `${Math.floor(videoDuration / 60)}:${String(videoDuration % 60).padStart(2, "0")}`
+                : "Unknown";
+
+            // Fetch the thumbnail once, and show just the name + thumbnail
+            // (no "Searching..."/"Downloading..." spam) while the audio
+            // downloads in the background.
+            let thumbBuffer;
+            if (videoThumbnail) {
+                try {
+                    const axios = require("axios");
+                    const res = await axios.get(videoThumbnail, { responseType: "arraybuffer", timeout: 10000 });
+                    thumbBuffer = Buffer.from(res.data);
+                } catch {
+                    thumbBuffer = null;
+                }
+            }
+
+            const infoCaption = `🎵 *${videoTitle || "Unknown"}*\n` +
+                                 `👤 ${videoChannel || "Unknown"} • ⏱️ ${durationText}`;
+
+            if (thumbBuffer) {
+                await conn.sendMessage(from, {
+                    image: thumbBuffer,
+                    caption: infoCaption
+                }, { quoted: mek });
+            } else {
+                await sendMessageWithContext(infoCaption);
+            }
 
             // Download audio-only stream to a temp file, with a couple of
             // retries since YouTube's 429 (Too Many Requests) is often
@@ -183,33 +210,10 @@ module.exports = {
                 throw lastErr;
             }
 
-            let thumbBuffer;
-            if (videoThumbnail) {
-                try {
-                    const axios = require("axios");
-                    const res = await axios.get(videoThumbnail, { responseType: "arraybuffer", timeout: 10000 });
-                    thumbBuffer = Buffer.from(res.data);
-                } catch {
-                    thumbBuffer = null;
-                }
-            }
-
-            const durationText = videoDuration
-                ? `${Math.floor(videoDuration / 60)}:${String(videoDuration % 60).padStart(2, "0")}`
-                : "Unknown";
-
-            const caption = `🎵 *Track Info*\n\n` +
-                            `📖 *Title:* ${videoTitle || "Unknown"}\n` +
-                            `👤 *Channel:* ${videoChannel || "Unknown"}\n` +
-                            `⏱️ *Duration:* ${durationText}\n` +
-                            `🌐 *Source:* YouTube\n\n` +
-                            `> _ᴘᴏᴡᴇʀᴇᴅ ʙʏ ꜱᴜʀʏᴀ-x - ᴍɪɴɪ_`;
-
             await conn.sendMessage(from, {
                 audio: fs.readFileSync(tempFilePath),
                 mimetype: "audio/mp4",
                 fileName: `${(videoTitle || "audio").replace(/[^\w\s]/gi, "")}.m4a`,
-                caption: caption,
                 jpegThumbnail: thumbBuffer,
                 contextInfo: {
                     forwardingScore: 999,
