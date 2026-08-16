@@ -15,23 +15,7 @@ const port = process.env.PORT || 3000;
 const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
 const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
-
-// === Bot public/private mode (Live read function) ===
-const botModeFile = path.join(__dirname, 'database', 'botmode.txt');
-
-function loadBotMode() {
-    try {
-        if (fs.existsSync(botModeFile)) {
-            const saved = fs.readFileSync(botModeFile, 'utf-8').trim().toLowerCase();
-            return saved === 'public'; // strictly returns true only when "public"
-        }
-    } catch (e) {
-        console.error("Failed to read bot mode file:", e.message);
-    }
-    return true; // default: public if file doesn't exist
-}
-
-console.log(`🔧 Bot mode at startup: ${loadBotMode() ? "PUBLIC" : "PRIVATE"}`);
+const { getMode: getBotModeForSession } = require('./lib/botmode');
 
 function isBotOwner(conn, sender) {
     try {
@@ -478,7 +462,7 @@ async function handleMessage(conn, message, sessionId) {
 
         const senderJid = message.key.participant || message.key.remoteJid;
         const isOwner = isBotOwner(conn, senderJid) || message.key.fromMe;
-        const isPublicMode = loadBotMode(); // Live mode check from botmode.txt
+        const isPublicMode = getBotModeForSession(sessionId) === 'public'; // per-session mode check
 
         // === Enforce Public/Private Mode ===
         if (!isPublicMode && !isOwner) {
@@ -531,7 +515,8 @@ async function handleMessage(conn, message, sessionId) {
                     sender: senderJid,
                     isAdmins,
                     isCreator,
-                    isOwner
+                    isOwner,
+                    sessionId
                 });
             } catch (error) {
                 console.error(`❌ Error executing ${commandName}:`, error);
