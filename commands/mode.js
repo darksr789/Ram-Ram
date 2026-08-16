@@ -1,25 +1,9 @@
 // === commands/mode.js ===
 // Provides .mode (public/private), plus direct .public, .private and .self shortcuts.
+// Mode is stored PER-SESSION (per paired WhatsApp number) via lib/botmode.js,
+// so each user's own bot has its own independent public/private setting.
 
-const fs = require('fs');
-const path = require('path');
-
-const botModeFile = path.join(__dirname, '../database', 'botmode.txt');
-
-function writeMode(mode) {
-    const dir = path.dirname(botModeFile);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(botModeFile, mode);
-}
-
-function readMode() {
-    try {
-        if (fs.existsSync(botModeFile)) {
-            return fs.readFileSync(botModeFile, 'utf-8').trim() === 'private' ? 'private' : 'public';
-        }
-    } catch {}
-    return 'public';
-}
+const { getMode, setMode } = require('../lib/botmode');
 
 module.exports = {
     mode: {
@@ -29,22 +13,24 @@ module.exports = {
         filename: __filename,
         use: ".mode / .mode public / .mode private",
 
-        execute: async (conn, message, m, { isOwner, reply, args }) => {
+        execute: async (conn, message, m, { isOwner, reply, args, sessionId }) => {
             try {
+                if (!isOwner) return reply("❌ Owner only!");
+
                 if (!args[0]) {
-                    const currentMode = readMode();
+                    const currentMode = getMode(sessionId);
                     return reply(`⚙️ *Bot Mode*\n\n📌 Current mode: *${currentMode.toUpperCase()}*\n\n📝 Usage:\n.mode public - Public mode (everyone can use)\n.mode private - Private mode (only owner can use)\n\nShortcuts: .public , .self , .private`);
                 }
 
                 const mode = args[0].toLowerCase();
 
                 if (mode === 'public') {
-                    writeMode('public');
+                    setMode(sessionId, 'public');
                     return reply("✅ *Public mode ON*\n\nEveryone can use the bot now.");
                 }
 
                 if (mode === 'private' || mode === 'self') {
-                    writeMode('private');
+                    setMode(sessionId, 'private');
                     return reply("✅ *Private mode ON*\n\nOnly the bot owner can use the bot now.");
                 }
 
@@ -65,9 +51,10 @@ module.exports = {
         filename: __filename,
         use: ".public",
 
-        execute: async (conn, message, m, { reply }) => {
+        execute: async (conn, message, m, { isOwner, reply, sessionId }) => {
             try {
-                writeMode('public');
+                if (!isOwner) return reply("❌ Owner only!");
+                setMode(sessionId, 'public');
                 return reply("✅ *Public mode ON*\n\nEveryone can use the bot now.");
             } catch (err) {
                 console.error("Public mode error:", err);
@@ -84,9 +71,10 @@ module.exports = {
         filename: __filename,
         use: ".self / .private",
 
-        execute: async (conn, message, m, { reply }) => {
+        execute: async (conn, message, m, { isOwner, reply, sessionId }) => {
             try {
-                writeMode('private');
+                if (!isOwner) return reply("❌ Owner only!");
+                setMode(sessionId, 'private');
                 return reply("✅ *Private mode ON*\n\nOnly the bot owner can use the bot now.");
             } catch (err) {
                 console.error("Self mode error:", err);
