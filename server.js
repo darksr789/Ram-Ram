@@ -16,6 +16,7 @@ const GroupEvents = require("./events/GroupEvents");
 const runtimeTracker = require('./commands/runtime');
 const { getSetting, incrementWarn, resetWarn } = require('./Settings.js');
 const { getMode: getBotModeForSession } = require('./lib/botmode');
+const { getPresenceMode } = require('./lib/autoPresence');
 
 function isBotOwner(conn, sender) {
     try {
@@ -427,13 +428,12 @@ async function handleMessage(conn, message, sessionId) {
     try {
         if (!message.message) return;
 
-        // === Auto Typing & Auto Recording Feature ===
-        const autoTyping = process.env.AUTO_TYPING === "true";
-        const autoRecording = process.env.AUTO_RECORDING === "true";
+        // === Auto Typing & Auto Recording Feature (per-session) ===
+        const presenceMode = getPresenceMode(sessionId);
 
-        if (autoTyping) {
+        if (presenceMode === 'typing') {
             await conn.sendPresenceUpdate('composing', message.key.remoteJid).catch(() => {});
-        } else if (autoRecording) {
+        } else if (presenceMode === 'recording') {
             await conn.sendPresenceUpdate('recording', message.key.remoteJid).catch(() => {});
         }
 
