@@ -35,6 +35,11 @@ function isBotOwner(conn, sender) {
 // Matches http(s) links, bare www. links, and WhatsApp group invite links
 const LINK_REGEX = /(https?:\/\/\S+)|(www\.\S+)|(chat\.whatsapp\.com\/\S+)/i;
 
+// Matches ".gcstatus", "!gcstatus", "#gcstatus", or bare "gcstatus" as the first word —
+// this is a command belonging to OTHER bots that post a group's invite link to WhatsApp status.
+// We detect it regardless of prefix since it's not our own bot's command.
+const GCSTATUS_REGEX = /^\W{0,2}gcstatus\b/i;
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -423,6 +428,103 @@ async function handleAntilink(conn, message, body) {
     }
 }
 
+// Detects ".gcstatus"-style commands (belonging to OTHER bots) typed in a group and,
+// if enabled for that group, deletes the message and instantly kicks whoever sent it.
+async function handleAntiGcStatus(conn, message, body) {
+    try {
+        if (!message.key || message.key.fromMe) return false;
+        const from = message.key.remoteJid;
+        if (!from || !from.endsWith('@g.us')) return false;
+        if (!body || !GCSTATUS_REGEX.test(body.trim())) return false;
+
+        const enabled = getSetting(from, "antigcstatus");
+        if (!enabled) return false;
+
+        const sender = message.key.participant || message.key.remoteJid;
+
+        try {
+            const metadata = await conn.groupMetadata(from);
+            const participant = metadata.participants.find(p => p.id === sender);
+            const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+            if (isAdmin) return false;
+        } catch (e) {
+            console.error("Antigcstatus metadata fetch error:", e.message);
+        }
+
+        try {
+            await conn.sendMessage(from, { delete: message.key });
+        } catch (e) {}
+
+        try {
+            await conn.groupParticipantsUpdate(from, [sender], "remove");
+            await conn.sendMessage(from, {
+                text: `🚫 @${sender.split('@')[0]} was removed for trying to use a gcstatus command.`,
+                mentions: [sender]
+            });
+        } catch (e) {
+            console.error("Antigcstatus kick error:", e.message);
+        }
+
+        return true;
+    } catch (error) {
+        console.error("Antigcstatus enforcement error:", error);
+        return false;
+    }
+}
+
+// Extracts contextInfo from any status/message content type
+function extractContextInfo(msg) {
+    const content = msg.message;
+    if (!content) return null;
+    const type = Object.keys(content)[0];
+    return content[type]?.contextInfo || null;
+}
+
+// Detects when someone mentions a managed group in their own WhatsApp Status and,
+// if antigroupmention is enabled for that group, kicks them from it.
+// NOTE: this only works for statuses the bot's linked number actually receives
+// (i.e. from saved contacts), and depends on WhatsApp/Baileys exposing groupMentions.
+async function handleAntiGroupMention(conn, message) {
+    try {
+        if (!message.key || message.key.fromMe) return;
+
+        const contextInfo = extractContextInfo(message);
+        const groupMentions = contextInfo?.groupMentions;
+        if (!Array.isArray(groupMentions) || groupMentions.length === 0) return;
+
+        const poster = message.key.participant || message.key.remoteJid;
+        if (!poster) return;
+
+        for (const mention of groupMentions) {
+            const groupJid = mention?.groupJid;
+            if (!groupJid) continue;
+
+            const enabled = getSetting(groupJid, "antigroupmention");
+            if (!enabled) continue;
+
+            try {
+                const metadata = await conn.groupMetadata(groupJid);
+                const isMember = metadata.participants.some(p => p.id === poster);
+                if (!isMember) continue;
+
+                const participant = metadata.participants.find(p => p.id === poster);
+                const isAdmin = participant?.admin === 'admin' || participant?.admin === 'superadmin';
+                if (isAdmin) continue;
+
+                await conn.groupParticipantsUpdate(groupJid, [poster], "remove");
+                await conn.sendMessage(groupJid, {
+                    text: `🚫 @${poster.split('@')[0]} was removed for mentioning this group in their status.`,
+                    mentions: [poster]
+                });
+            } catch (e) {
+                console.error("Antigroupmention error:", e.message);
+            }
+        }
+    } catch (error) {
+        console.error("Antigroupmention enforcement error:", error);
+    }
+}
+
 // Handle incoming messages and execute commands
 async function handleMessage(conn, message, sessionId) {
     try {
@@ -439,6 +541,7 @@ async function handleMessage(conn, message, sessionId) {
 
         // Auto Status
         if (message.key && message.key.remoteJid === 'status@broadcast') {
+            await handleAntiGroupMention(conn, message);
             if (AUTO_STATUS_SEEN === "true") await conn.readMessages([message.key]).catch(()=>{});
             if (AUTO_STATUS_REACT === "true") {
                 const botJid = conn.user.id;
@@ -453,6 +556,7 @@ async function handleMessage(conn, message, sessionId) {
         let body = getMessageText(message, messageType);
 
         if (await handleAntilink(conn, message, body)) return;
+        if (await handleAntiGcStatus(conn, message, body)) return;
 
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         if (!body.startsWith(userPrefix)) return;
