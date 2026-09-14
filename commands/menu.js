@@ -16,8 +16,8 @@ module.exports = {
 
             const botName = "𓆩 SURYA X💀𓆪";
             const ownerName = "DARK SURYA";
-            const version = "2.0";
-            const platform = "𝙏𝙚𝙡𝙚𝙜𝙧𝙖𝙢";
+            const version = "9.0";
+            const platform = "ʏᴏᴜʀ ʜᴇᴀʀᴛ😁";
 
             const menuText = `
 ╭━━〔 ☠️ ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs ☠️ 〕━━┈⊷
