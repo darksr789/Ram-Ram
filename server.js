@@ -122,13 +122,13 @@ let PREFIX = process.env.PREFIX || ".";
 
 // Bot configuration from environment variables
 const BOT_NAME = process.env.BOT_NAME || "SURYA X";
-const OWNER_NAME = process.env.OWNER_NAME || "DARK xSURYA";
+const OWNER_NAME = process.env.OWNER_NAME || "DARK x SURYA";
 
 const MENU_IMAGE_URL = process.env.MENU_IMAGE_URL || "https://files.catbox.moe/c3267k.png";
 const REPO_LINK = process.env.REPO_LINK || "https://github.com";
 
 // Auto-status configuration
-const AUTO_STATUS_SEEN = process.env.AUTO_STATUS_SEEN || "true";
+const AUTO_STATUS_SEEN = process.env.AUTO_STATUS_SEEN || "false";
 const AUTO_STATUS_REACT = process.env.AUTO_STATUS_REACT || "true";
 const AUTO_STATUS_REPLY = process.env.AUTO_STATUS_REPLY || "false";
 const AUTO_STATUS_MSG = process.env.AUTO_STATUS_MSG || "YOUR STATUS HAS BEEN SEEN BY SURYA X🫶🏻";
@@ -669,7 +669,7 @@ async function handleBuiltInCommands(conn, message, commandName, args, sessionId
                         externalAdReply: {
                             title: "⚡ SURYA-X Speed Test",
                             body: `${BOT_NAME} Performance Check`,
-                            thumbnailUrl: MENU_IMAGE_URL,
+                            thumbnailUrl: MENU_IMAGR_URL,
                             mediaType: 1,
                             renderLargerThumbnail: true
                         }
