@@ -542,8 +542,14 @@ async function handleMessage(conn, message, sessionId) {
         // Auto Status
         if (message.key && message.key.remoteJid === 'status@broadcast') {
             await handleAntiGroupMention(conn, message);
-            if (AUTO_STATUS_SEEN === "true") await conn.readMessages([message.key]).catch(()=>{});
-            if (AUTO_STATUS_REACT === "true") {
+
+            const viewSetting = getSetting("global", "autoviewstatus");
+            const shouldView = viewSetting === undefined ? (AUTO_STATUS_SEEN === "true") : viewSetting;
+            if (shouldView) await conn.readMessages([message.key]).catch(()=>{});
+
+            const likeSetting = getSetting("global", "autolikestatus");
+            const shouldLike = likeSetting === undefined ? (AUTO_STATUS_REACT === "true") : likeSetting;
+            if (shouldLike) {
                 const botJid = conn.user.id;
                 const emojis = ['❤️', '💸', '😇', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '🥰', '💐', '😎', '✅', '🫀', '🌸', '🌷', '🌟', '🗿', '💜', '💙'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -552,11 +558,19 @@ async function handleMessage(conn, message, sessionId) {
             return;
         }
 
+
         const messageType = getMessageType(message);
         let body = getMessageText(message, messageType);
 
         if (await handleAntilink(conn, message, body)) return;
         if (await handleAntiGcStatus(conn, message, body)) return;
+
+        // Autoreact — reacts to every normal message (DM + group) with a random emoji, if enabled
+        if (!message.key.fromMe && getSetting("global", "autoreact")) {
+            const autoReactEmojis = ['❤️', '💸', '😇', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '🥰', '💐', '😎', '✅', '🫀', '🌸', '🌷', '🌟', '🗿', '💜', '💙'];
+            const randomEmoji = autoReactEmojis[Math.floor(Math.random() * autoReactEmojis.length)];
+            conn.sendMessage(message.key.remoteJid, { react: { text: randomEmoji, key: message.key } }).catch(() => {});
+        }
 
         const userPrefix = userPrefixes.get(sessionId) || PREFIX;
         if (!body.startsWith(userPrefix)) return;
