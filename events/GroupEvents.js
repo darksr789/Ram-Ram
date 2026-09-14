@@ -1,13 +1,14 @@
 // === GroupEvents.js ===
 const { isJidGroup } = require('@whiskeysockets/baileys');
 const { isWelcomeEnabled, isGoodbyeEnabled } = require('../lib/groupToggles');
+const { getSetting } = require('../Settings.js');
 
 // ========== TRACK SENT MESSAGES ==========
 const sentTracker = new Set();
 
 module.exports = async (conn, update) => {
     try {
-        const { id, participants, action } = update;
+        const { id, participants, action, author } = update;
         if (!id || !isJidGroup(id) || !participants) return;
 
         for (const participant of participants) {
@@ -57,9 +58,44 @@ module.exports = async (conn, update) => {
 
                 console.log(`✅ Goodbye sent to ${userName}`);
             }
+
+            // ========== PDM: PROMOTE/DEMOTE ANNOUNCE ==========
+            else if (action === "promote" || action === "demote") {
+                if (!getSetting(id, "pdm")) {
+                    console.log(`⏭️ PDM (promote/demote announce) disabled for ${id}`);
+                    continue;
+                }
+
+                sentTracker.add(msgKey);
+
+                const actorMentions = [participant];
+                let text;
+
+                if (author) {
+                    const actorName = author.split("@")[0];
+                    actorMentions.push(author);
+                    text = action === "promote"
+                        ? `⬆️ @${userName} was *promoted to admin* by @${actorName}`
+                        : `⬇️ @${userName} was *demoted from admin* by @${actorName}`;
+                } else {
+                    // WhatsApp didn't tell us who performed the action (this can
+                    // happen depending on how the change was made)
+                    text = action === "promote"
+                        ? `⬆️ @${userName} was *promoted to admin*`
+                        : `⬇️ @${userName} was *demoted from admin*`;
+                }
+
+                await conn.sendMessage(id, {
+                    text,
+                    mentions: actorMentions
+                });
+
+                console.log(`✅ PDM announce sent for ${action} of ${userName}`);
+            }
         }
 
     } catch (err) {
         console.error("GroupEvents error:", err);
     }
 };
+
